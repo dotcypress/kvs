@@ -11,10 +11,6 @@ pub trait StoreAdapter {
     const TOTAL_PAGES: u16;
     const PAGE_SIZE: u16;
 
-    const VERSION: u8 = 1;
-    const MAX_KEY_LEN: usize = 16;
-    const MAX_VAL_LEN: usize = 4095;
-
     type Error;
 
     fn write(&mut self, addr: u16, data: &[u8]) -> Result<(), Self::Error>;

@@ -2,6 +2,7 @@ use crate::hole::Hole;
 use crate::record_ref::RecordRef;
 use crate::{StoreAdapter, StoreError};
 
+const VERSION: u8 = 1;
 const REFS_LEN: usize = 256;
 const HOLES_LEN: usize = 128;
 
@@ -54,7 +55,7 @@ where
                 .map_err(StoreError::AdapterError)?;
         }
         buf[0..4].copy_from_slice(&A::MAGIC);
-        buf[4] = A::VERSION;
+        buf[4] = VERSION;
         buf[5] = self.index_pages as u8;
         self.adapter
             .write(0, &buf[0..A::PAGE_SIZE as usize])
@@ -75,7 +76,7 @@ where
 
         let ver = page[4];
         let index_pages = page[5] as u16;
-        if ver != A::VERSION {
+        if ver != VERSION {
             return Err(StoreError::InvalidVersion);
         }
         if index_pages > self.index_pages {
@@ -121,13 +122,12 @@ where
             self.remove(key)?;
         }
 
-        let mut rec_ref = if let Some(rec_ref) = self.refs.iter().find(|r| !r.active()) {
+        let mut rec_ref = if let Some(rec_ref) = self.refs.iter_mut().find(|r| !r.active()) {
+            rec_ref.len = 1 + key.len() as u16 + val.len() as u16;
             *rec_ref
         } else {
             return Err(StoreError::Overflow);
         };
-        rec_ref.len = 1 + key.len() as u16 + val.len() as u16;
-        assert!(rec_ref.len <= A::MAX_VAL_LEN as u16);
 
         if let Some(free_page) = self.alloc(None, rec_ref.pages(A::PAGE_SIZE)) {
             rec_ref.page = free_page;
@@ -174,7 +174,6 @@ where
         } else {
             return Err(StoreError::KeyNofFound);
         };
-        assert!(rec_ref.len + val.len() as u16 <= A::MAX_VAL_LEN as u16);
 
         let initial_pages = rec_ref.pages(A::PAGE_SIZE);
         let initial_len = rec_ref.len;
@@ -315,7 +314,7 @@ where
     }
 
     fn find_ref(&mut self, key: &[u8]) -> Result<Option<RecordRef>, StoreError<E>> {
-        assert!(!key.is_empty() && key.len() <= A::MAX_KEY_LEN);
+        assert!(!key.is_empty());
         if !self.is_open {
             return Err(StoreError::StoreClosed);
         }
