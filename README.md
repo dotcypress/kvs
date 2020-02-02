@@ -2,6 +2,17 @@
 
 [PoC] Key-Value Store.
 
+## Limitations
+
+* Max key size: 15 bytes
+* Max record size: 4095 bytes
+* Supported page sizes: 16-128 bits
+
+## Semantics
+
+* Store adapter must support partial page write and multipage read.
+* `append` is guaranteed for the last added key only.
+
 ## License
 
 Licensed under either of

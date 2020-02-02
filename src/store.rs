@@ -7,7 +7,9 @@ const REFS_LEN: usize = 256;
 const HOLES_LEN: usize = 128;
 
 const REF_SIZE: u16 = 4;
-const MAX_PAGE_SIZE: usize = 32;
+const MAX_PAGE_SIZE: usize = 128;
+const MAX_KEY_SIZE: usize = 15;
+const MAX_RECORD_SIZE: usize = 4095;
 
 pub struct KVStore<A: StoreAdapter> {
     adapter: A,
@@ -113,7 +115,8 @@ where
     }
 
     pub fn insert(&mut self, key: &[u8], val: &[u8]) -> Result<(), StoreError<E>> {
-        assert!(!val.is_empty());
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE);
+        assert!(!val.is_empty() && val.len() + key.len() < MAX_RECORD_SIZE);
         if !self.is_open {
             return Err(StoreError::StoreClosed);
         }
@@ -164,6 +167,7 @@ where
     }
 
     pub fn append(&mut self, key: &[u8], val: &[u8]) -> Result<(), StoreError<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE);
         assert!(!val.is_empty());
         if !self.is_open {
             return Err(StoreError::StoreClosed);
@@ -174,6 +178,7 @@ where
         } else {
             return Err(StoreError::KeyNofFound);
         };
+        assert!(rec_ref.len as usize + val.len() < MAX_RECORD_SIZE);
 
         let initial_pages = rec_ref.pages(A::PAGE_SIZE);
         let initial_len = rec_ref.len;
