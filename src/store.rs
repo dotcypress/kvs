@@ -239,7 +239,7 @@ where
         key: &[u8],
         offset: u16,
         buf: &mut [u8],
-    ) -> Result<u16, StoreError<E>> {
+    ) -> Result<usize, StoreError<E>> {
         assert!(!buf.is_empty());
         if !self.is_open {
             return Err(StoreError::StoreClosed);
@@ -266,7 +266,7 @@ where
         self.adapter
             .read(offset as u16, &mut buf[0..read_len])
             .map_err(StoreError::AdapterError)?;
-        Ok(read_len as u16)
+        Ok(read_len)
     }
 
     fn alloc(&mut self, begin: Option<u16>, pages: u16) -> Option<u16> {

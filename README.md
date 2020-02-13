@@ -4,6 +4,7 @@
 
 ## Limitations
 
+* Store capacity: 256 records
 * Max key size: 15 bytes
 * Max record size: 4095 bytes
 * Supported page sizes: 16-128 bytes
