@@ -234,6 +234,23 @@ where
         Ok(())
     }
 
+    pub fn load_key(&mut self, hash: u16, buf: &mut [u8]) -> Result<usize, StoreError<E>> {
+        assert!(!buf.is_empty());
+        let rec_ref = if let Some(rec_ref) = self.refs.iter().find(|r| r.hash == hash) {
+            rec_ref
+        } else {
+            return Err(StoreError::KeyNofFound);
+        };
+        self.adapter
+            .read(rec_ref.page * A::PAGE_SIZE, &mut buf[0..1])
+            .map_err(StoreError::AdapterError)?;
+        let key_len = buf[0] as usize;
+        self.adapter
+            .read(rec_ref.page * A::PAGE_SIZE + 1, &mut buf[0..key_len])
+            .map_err(StoreError::AdapterError)?;
+        Ok(key_len)
+    }
+
     pub fn load_val(
         &mut self,
         key: &[u8],
@@ -323,8 +340,8 @@ where
         if !self.is_open {
             return Err(StoreError::StoreClosed);
         }
-        let hash = RecordRef::hash(key);
         let mut buf = [0; MAX_PAGE_SIZE];
+        let hash = RecordRef::hash(key);
         for skip in 0..REFS_LEN {
             if let Some(rec_ref) = self
                 .refs
