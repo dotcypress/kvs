@@ -257,21 +257,18 @@ where
         offset: u16,
         buf: &mut [u8],
     ) -> Result<usize, StoreError<E>> {
-        assert!(!buf.is_empty());
+        assert!(!buf.is_empty() && buf.len() < 256);
         if !self.is_open {
             return Err(StoreError::StoreClosed);
         }
-
         let rec_ref = if let Some(rec_ref) = self.find_ref(key)? {
             rec_ref
         } else {
             return Err(StoreError::KeyNofFound);
         };
-        assert!(
-            offset < (rec_ref.len - key.len() as u16 - 1),
-            "Offset >= Value length"
-        );
-
+        if offset >= (rec_ref.len - key.len() as u16 - 1) {
+            return Ok(0);
+        }
         let val_offset = offset as usize + key.len() + 1;
         let read_len = usize::min(
             rec_ref.len.saturating_sub(val_offset as u16) as usize,
