@@ -374,8 +374,7 @@ where
     }
 
     fn reset(&mut self) {
-        let mut refs = [RecordRef::default(); REFS_LEN];
-        for (idx, rec_ref) in refs.iter_mut().enumerate() {
+        for (idx, rec_ref) in self.refs.iter_mut().enumerate() {
             rec_ref.idx = idx as u16;
             rec_ref.page = 0;
         }
