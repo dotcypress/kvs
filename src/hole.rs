@@ -1,32 +1,38 @@
+use core::cmp::{Eq, Ord, Ordering, PartialEq};
+
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Hole {
-    pub idx: usize,
-    pub from: u16,
-    pub to: u16,
+    pub from: u32,
+    pub to: u32,
 }
 
-impl core::cmp::Ord for Hole {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+impl Ord for Hole {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.size().cmp(&other.size())
     }
 }
 
-impl core::cmp::PartialOrd for Hole {
-    fn partial_cmp(&self, other: &Hole) -> Option<core::cmp::Ordering> {
+impl PartialOrd for Hole {
+    fn partial_cmp(&self, other: &Hole) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl core::cmp::PartialEq for Hole {
+impl PartialEq for Hole {
     fn eq(&self, other: &Hole) -> bool {
         self.from == other.from && self.to == other.to
     }
 }
 
-impl core::cmp::Eq for Hole {}
+impl Eq for Hole {}
 
 impl Hole {
-    pub fn size(self) -> u16 {
+    pub fn size(&self) -> u32 {
         self.to - self.from
+    }
+
+    pub fn reset(&mut self) {
+        self.to = 0;
+        self.from = 0;
     }
 }

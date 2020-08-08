@@ -1,319 +1,268 @@
+use byteorder::{BigEndian, ByteOrder};
+
 use crate::hole::Hole;
-use crate::record_ref::RecordRef;
-use crate::{StoreAdapter, StoreError};
+use crate::record::{hash_key, Record, RecordRef};
+use crate::{Error, StoreAdapter};
 
-const VERSION: u8 = 1;
-const REFS_LEN: usize = 256;
-const HOLES_LEN: usize = 128;
+const CAPACITY: usize = 32;
+const BUFFER_SIZE: usize = 256;
 
-const REF_SIZE: u16 = 4;
-const MAX_PAGE_SIZE: usize = 128;
-const MAX_KEY_SIZE: usize = 15;
-const MAX_RECORD_SIZE: usize = 4095;
+const VERSION: u8 = 0;
+const HEADER_SIZE: usize = 6;
+const REF_SIZE: usize = 6;
+const HOLES_LEN: usize = CAPACITY / 3;
+const MAX_KEY_SIZE: usize = BUFFER_SIZE - 6;
+const INDEX_SIZE: usize = REF_SIZE * CAPACITY;
+const METADATA_SIZE: usize = HEADER_SIZE + INDEX_SIZE;
+const INDEX_LOAD_BATCH_SIZE: usize = BUFFER_SIZE / REF_SIZE * REF_SIZE;
 
 pub struct KVStore<A: StoreAdapter> {
     adapter: A,
-    is_open: bool,
-    index_pages: u16,
+    buf: [u8; BUFFER_SIZE],
     holes: [Hole; HOLES_LEN],
-    refs: [RecordRef; REFS_LEN],
+    index: [RecordRef; CAPACITY],
 }
-
-// Store header layout
-// |  magic  |  version  |  index pages  |
-// |   32    |     8     |      8        |
-
-// Record ref layout
-// |  page no  |  len  |  hash  |
-// |     9     |  12   |   11   |
-
-// Record page layout
-// |  key len  |     key       |    value      |
-// |    8      |  key len * 8  |  val len * 8  |
 
 impl<A, E> KVStore<A>
 where
     A: StoreAdapter<Error = E>,
 {
-    pub fn new(adapter: A) -> KVStore<A> {
+    pub fn open(adapter: A, allow_create: bool) -> Result<KVStore<A>, Error<E>> {
+        if METADATA_SIZE as u32 > A::PAGE_SIZE * A::PAGES as u32 {
+            return Err(Error::StoreOverflow);
+        }
+
         let mut store = KVStore {
             adapter,
-            is_open: false,
-            index_pages: REFS_LEN as u16 * REF_SIZE / A::PAGE_SIZE,
-            refs: [RecordRef::default(); REFS_LEN],
+            buf: [0; BUFFER_SIZE],
+            index: [RecordRef::default(); CAPACITY],
             holes: [Hole::default(); HOLES_LEN],
         };
-        store.reset();
+        store.holes[0].from = METADATA_SIZE as u32;
+        store.holes[0].to = A::PAGES as u32 * A::PAGE_SIZE;
+
         store
-    }
+            .adapter
+            .read(0, &mut store.buf[0..HEADER_SIZE as usize])
+            .map_err(Error::AdapterError)?;
 
-    pub fn create(&mut self) -> Result<(), StoreError<E>> {
-        self.reset();
-        let mut buf = [0; MAX_PAGE_SIZE];
-        for ref_page_idx in 0..=self.index_pages {
-            let offset = (ref_page_idx + 1) * A::PAGE_SIZE;
-            self.adapter
-                .write(offset, &buf[0..A::PAGE_SIZE as usize])
-                .map_err(StoreError::AdapterError)?;
-        }
-        buf[0..4].copy_from_slice(&A::MAGIC);
-        buf[4] = VERSION;
-        buf[5] = self.index_pages as u8;
-        self.adapter
-            .write(0, &buf[0..A::PAGE_SIZE as usize])
-            .map_err(StoreError::AdapterError)?;
-        self.is_open = true;
-        Ok(())
-    }
-
-    pub fn open(&mut self) -> Result<(), StoreError<E>> {
-        self.reset();
-        let mut page = [0; MAX_PAGE_SIZE];
-        self.adapter
-            .read(0, &mut page[0..A::PAGE_SIZE as usize])
-            .map_err(StoreError::AdapterError)?;
-        if page[0..4] != A::MAGIC {
-            return Err(StoreError::StoreNotFound);
+        if store.buf[0..3] != A::MAGIC {
+            return if allow_create {
+                store.format()?;
+                Ok(store)
+            } else {
+                Err(Error::StoreNotFound)
+            };
         }
 
-        let ver = page[4];
-        let index_pages = page[5] as u16;
-        if ver != VERSION {
-            return Err(StoreError::InvalidVersion);
-        }
-        if index_pages > self.index_pages {
-            return Err(StoreError::IndexOverflow);
+        if store.buf[3] != VERSION {
+            return Err(Error::InvalidVersion);
         }
 
-        for page_idx in 0..self.index_pages {
-            let offset = (page_idx + 1) * A::PAGE_SIZE;
-            self.adapter
-                .read(offset as u16, &mut page[0..A::PAGE_SIZE as usize])
-                .map_err(StoreError::AdapterError)?;
-            let refs_per_page = A::PAGE_SIZE / REF_SIZE;
-            for ref_idx in 0..refs_per_page {
-                let ref_offset = REF_SIZE * ref_idx;
-                let mut rec_ref = RecordRef::deserialize(
-                    &page[ref_offset as usize..(ref_offset + REF_SIZE) as usize],
-                );
-                let ref_idx = ref_idx + page_idx * refs_per_page;
-                rec_ref.idx = ref_idx;
-                if rec_ref.active() {
-                    self.alloc(Some(rec_ref.page), rec_ref.pages(A::PAGE_SIZE))
-                        .ok_or(StoreError::Overflow)?;
+        if BigEndian::read_u16(&store.buf[4..6]) as usize != CAPACITY {
+            return Err(Error::InvalidCapacity);
+        }
+
+        let mut ref_idx = 0;
+        let mut offset = HEADER_SIZE;
+        while ref_idx < CAPACITY {
+            let batch = usize::min(METADATA_SIZE - offset, INDEX_LOAD_BATCH_SIZE);
+            let refs_per_batch = batch / REF_SIZE;
+
+            store
+                .adapter
+                .read(offset as u32, &mut store.buf[..batch])
+                .map_err(Error::AdapterError)?;
+
+            for idx in 0..refs_per_batch {
+                let ref_start = idx * REF_SIZE;
+                store.index[ref_idx].data = BigEndian::read_u16(&store.buf[ref_start..]);
+
+                if store.index[ref_idx].in_use() && !store.index[ref_idx].is_deleted() {
+                    let rec_addr = BigEndian::read_u32(&store.buf[(ref_start + 2)..]);
+                    store
+                        .adapter
+                        .read(rec_addr, &mut store.buf[..5])
+                        .map_err(Error::AdapterError)?;
+
+                    let val_cap = BigEndian::read_u16(&store.buf[..2]);
+                    let key_len = store.buf[4] as u16;
+                    store
+                        .alloc(Some(rec_addr), (val_cap + key_len) as u32 + 5)
+                        .ok_or(Error::StoreOverflow)?;
                 }
-                self.refs[ref_idx as usize] = rec_ref;
+                ref_idx += 1;
             }
+            offset += batch;
         }
-
-        self.is_open = true;
-        Ok(())
+        Ok(store)
     }
 
-    pub fn contains_key(&mut self, key: &[u8]) -> Result<bool, StoreError<E>> {
-        self.find_ref(key).map(|r| r.is_some())
-    }
-
-    pub fn insert(&mut self, key: &[u8], val: &[u8]) -> Result<(), StoreError<E>> {
-        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE);
-        assert!(!val.is_empty() && val.len() + key.len() < MAX_RECORD_SIZE);
-        if !self.is_open {
-            return Err(StoreError::StoreClosed);
-        }
-
-        if self.contains_key(key)? {
-            self.remove(key)?;
-        }
-
-        let mut rec_ref = if let Some(rec_ref) = self.refs.iter_mut().find(|r| !r.active()) {
-            rec_ref.len = 1 + key.len() as u16 + val.len() as u16;
-            *rec_ref
-        } else {
-            return Err(StoreError::Overflow);
-        };
-
-        if let Some(free_page) = self.alloc(None, rec_ref.pages(A::PAGE_SIZE)) {
-            rec_ref.page = free_page;
-        } else {
-            return Err(StoreError::Overflow);
-        }
-
-        let mut buf = [0; MAX_PAGE_SIZE];
-        let rec_end = u16::min(A::PAGE_SIZE, rec_ref.len) as usize;
-        let val_start = key.len() + 1;
-        let chunk_len = rec_end - val_start;
-
-        buf[0] = key.len() as u8;
-        buf[1..val_start].copy_from_slice(key);
-        buf[val_start..rec_end].copy_from_slice(&val[..chunk_len]);
+    pub fn close(self) -> A {
         self.adapter
-            .write(rec_ref.page * A::PAGE_SIZE, &buf[0..rec_end])
-            .map_err(StoreError::AdapterError)?;
-
-        if rec_ref.len > A::PAGE_SIZE {
-            let val_offset = val.len() - (rec_ref.len - A::PAGE_SIZE) as usize;
-            for (idx, chunk) in val[val_offset..].chunks(A::PAGE_SIZE as usize).enumerate() {
-                let page = rec_ref.page + idx as u16 + 1;
-                self.adapter
-                    .write(page * A::PAGE_SIZE, &chunk)
-                    .map_err(StoreError::AdapterError)?
-            }
-        }
-
-        rec_ref.hash = RecordRef::hash(key);
-        self.refs[rec_ref.idx as usize] = rec_ref;
-        self.save_ref(rec_ref)?;
-        Ok(())
     }
 
-    pub fn append(&mut self, key: &[u8], val: &[u8]) -> Result<(), StoreError<E>> {
-        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE);
-        assert!(!val.is_empty());
-        if !self.is_open {
-            return Err(StoreError::StoreClosed);
-        }
+    pub fn format(&mut self) -> Result<(), Error<E>> {
+        self.index.iter_mut().for_each(|r| r.reset());
+        self.holes.iter_mut().for_each(|h| h.reset());
+        self.holes[0].from = METADATA_SIZE as u32;
+        self.holes[0].to = A::PAGES as u32 * A::PAGE_SIZE;
+        self.buf.iter_mut().for_each(|b| *b = 0xff);
 
-        let mut rec_ref = if let Some(rec_ref) = self.find_ref(key)? {
-            rec_ref
-        } else {
-            return Err(StoreError::KeyNofFound);
-        };
-        assert!(rec_ref.len as usize + val.len() < MAX_RECORD_SIZE);
-
-        let initial_pages = rec_ref.pages(A::PAGE_SIZE);
-        let initial_len = rec_ref.len;
-        let last_page = rec_ref.page + rec_ref.pages(A::PAGE_SIZE);
-
-        rec_ref.len += val.len() as u16;
-        let new_pages = rec_ref.pages(A::PAGE_SIZE) - initial_pages;
-        if new_pages > 0 && self.alloc(Some(last_page), new_pages).is_none() {
-            return Err(StoreError::AppendFailed);
-        }
-
-        let used = initial_len % A::PAGE_SIZE;
-        let first_chunk = if used > 0 {
-            u16::min(val.len() as u16, A::PAGE_SIZE - used)
-        } else {
-            0
-        };
-
-        if first_chunk > 0 {
-            let offset = (last_page - 1) * A::PAGE_SIZE + used;
+        let mut offset = 0;
+        while offset < METADATA_SIZE {
+            let batch = usize::min(METADATA_SIZE - offset, BUFFER_SIZE);
             self.adapter
-                .write(offset, &val[0..first_chunk as usize])
-                .map_err(StoreError::AdapterError)?;
+                .write(offset as u32, &self.buf[..batch])
+                .map_err(Error::AdapterError)?;
+            offset += batch;
         }
 
-        for (idx, chunk) in val[first_chunk as usize..]
-            .chunks(A::PAGE_SIZE as usize)
-            .enumerate()
-        {
-            let page = idx as u16 + last_page;
-            self.adapter
-                .write(page * A::PAGE_SIZE, &chunk)
-                .map_err(StoreError::AdapterError)?
-        }
-
-        self.refs[rec_ref.idx as usize] = rec_ref;
-        self.save_ref(rec_ref)?;
-        Ok(())
+        self.buf[0..3].copy_from_slice(&A::MAGIC);
+        self.buf[3] = VERSION;
+        BigEndian::write_u16(&mut self.buf[4..6], CAPACITY as u16);
+        self.adapter
+            .write(0, &self.buf[..6])
+            .map_err(Error::AdapterError)
     }
 
-    pub fn remove(&mut self, key: &[u8]) -> Result<(), StoreError<E>> {
-        if !self.is_open {
-            return Err(StoreError::StoreClosed);
-        }
-        if let Some(mut rec_ref) = self.find_ref(key)? {
-            self.dealloc(rec_ref.page, rec_ref.pages(A::PAGE_SIZE));
-            rec_ref.page = 0;
-            rec_ref.len = 0;
-            rec_ref.hash = 0;
-            self.refs[rec_ref.idx as usize] = rec_ref;
-            self.save_ref(rec_ref)?;
-        }
-        Ok(())
+    pub fn insert(&mut self, key: &[u8], val: &[u8]) -> Result<(), Error<E>> {
+        self.insert_with_capacity(key, val, None)
     }
 
-    pub fn load_key(&mut self, hash: u16, buf: &mut [u8]) -> Result<usize, StoreError<E>> {
-        assert!(!buf.is_empty());
-        let rec_ref = if let Some(rec_ref) = self.refs.iter().find(|r| r.hash == hash) {
-            rec_ref
-        } else {
-            return Err(StoreError::KeyNofFound);
+    pub fn insert_with_capacity(
+        &mut self,
+        key: &[u8],
+        val: &[u8],
+        val_cap: Option<u16>,
+    ) -> Result<(), Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
+        assert!(!val.is_empty() || val_cap.filter(|cap| *cap > 0).is_some());
+        assert!(val_cap.filter(|cap| val.len() > *cap as usize).is_none());
+
+        self.remove(key)?;
+
+        let ref_idx = self.alloc_ref()?;
+        let mut record = Record {
+            ref_idx,
+            addr: 0,
+            key_len: key.len() as u8,
+            value_len: val.len() as u16,
+            value_cap: val_cap.unwrap_or(val.len() as u16),
         };
-        self.adapter
-            .read(rec_ref.page * A::PAGE_SIZE, &mut buf[0..1])
-            .map_err(StoreError::AdapterError)?;
-        let key_len = buf[0] as usize;
-        self.adapter
-            .read(rec_ref.page * A::PAGE_SIZE + 1, &mut buf[0..key_len])
-            .map_err(StoreError::AdapterError)?;
-        Ok(key_len)
+
+        if let Some(addr) = self.alloc(None, record.size()) {
+            self.adapter
+                .write(addr + key.len() as u32 + 5, val)
+                .map_err(Error::AdapterError)?;
+            record.addr = addr;
+            self.index[ref_idx].load_hash(hash_key(key));
+            self.index[ref_idx].set_in_use();
+            self.save_record_header(&record, Some(key))?;
+            self.save_ref(ref_idx, addr)
+        } else {
+            Err(Error::StoreOverflow)
+        }
     }
 
-    pub fn load_val(
+    pub fn append(&mut self, key: &[u8], patch: &[u8]) -> Result<(u16, u16), Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
+        assert!(!patch.is_empty());
+
+        let mut record = self
+            .find_record(key)
+            .and_then(|x| x.ok_or(Error::KeyNofFound))?;
+        let offset = record.value_len;
+        self.patch_value(&mut record, offset, patch)
+    }
+
+    pub fn patch(&mut self, key: &[u8], offset: u16, patch: &[u8]) -> Result<(u16, u16), Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
+        assert!(!patch.is_empty());
+
+        let mut record = self
+            .find_record(key)
+            .and_then(|x| x.ok_or(Error::KeyNofFound))?;
+
+        self.patch_value(&mut record, offset, patch)
+    }
+
+    pub fn remove(&mut self, key: &[u8]) -> Result<bool, Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
+
+        if let Some(rec) = self.find_record(key)? {
+            self.free_ref(rec.addr, rec.size());
+            self.index[rec.ref_idx].set_deleted();
+            self.save_ref(rec.ref_idx, u32::MAX)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn contains_key(&mut self, key: &[u8]) -> Result<bool, Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
+        self.find_record(key).map(|r| r.is_some())
+    }
+
+    pub fn load(&mut self, key: &[u8], buf: &mut [u8]) -> Result<(u16, u16, u16), Error<E>> {
+        self.load_with_offset(key, 0, buf)
+    }
+
+    pub fn load_with_offset(
         &mut self,
         key: &[u8],
         offset: u16,
         buf: &mut [u8],
-    ) -> Result<usize, StoreError<E>> {
-        assert!(!buf.is_empty() && buf.len() < 256);
-        if !self.is_open {
-            return Err(StoreError::StoreClosed);
+    ) -> Result<(u16, u16, u16), Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
+
+        let rec = self
+            .find_record(key)
+            .and_then(|x| x.ok_or(Error::KeyNofFound))?;
+
+        let read_len = u16::min(rec.value_len.saturating_sub(offset), buf.len() as u16);
+        if offset + read_len > rec.value_len {
+            return Err(Error::Overread);
         }
-        let rec_ref = if let Some(rec_ref) = self.find_ref(key)? {
-            rec_ref
-        } else {
-            return Err(StoreError::KeyNofFound);
-        };
-        if offset >= (rec_ref.len - key.len() as u16 - 1) {
-            return Ok(0);
-        }
-        let val_offset = offset as usize + key.len() + 1;
-        let read_len = usize::min(
-            rec_ref.len.saturating_sub(val_offset as u16) as usize,
-            buf.len(),
-        );
-        let page = rec_ref.page as usize + (val_offset / A::PAGE_SIZE as usize);
-        let val_offset = val_offset % A::PAGE_SIZE as usize;
-        let offset = page * A::PAGE_SIZE as usize + val_offset;
+
+        let addr = rec.addr + rec.key_len as u32 + offset as u32 + 5;
         self.adapter
-            .read(offset as u16, &mut buf[0..read_len])
-            .map_err(StoreError::AdapterError)?;
-        Ok(read_len)
+            .read(addr, &mut buf[..read_len as usize])
+            .map_err(Error::AdapterError)?;
+
+        Ok((read_len as u16, rec.value_len, rec.value_cap))
     }
 
-    fn alloc(&mut self, begin: Option<u16>, pages: u16) -> Option<u16> {
-        assert!(pages > 0);
-        if let Some(begin) = begin {
-            assert!(begin > self.index_pages);
+    fn alloc(&mut self, offset: Option<u32>, len: u32) -> Option<u32> {
+        if let Some(offset) = offset {
             match self
                 .holes
                 .iter_mut()
-                .find(|h| begin >= h.from && begin < h.to && h.size() - (begin - h.from) >= pages)
+                .find(|h| offset >= h.from && offset < h.to && h.size() - (offset - h.from) >= len)
             {
-                Some(hole) if hole.from == begin => {
-                    hole.from += pages;
-                    Some(begin)
+                Some(hole) if hole.from == offset => {
+                    hole.from += len;
+                    Some(offset)
                 }
                 Some(hole) => {
                     let hole_end = hole.to;
-                    hole.to = begin;
+                    hole.to = offset;
                     if let Some(slot) = self.holes.iter_mut().find(|h| h.size() == 0) {
-                        slot.from = begin + pages;
+                        slot.from = offset + len;
                         slot.to = hole_end;
                     } else {
                         return None;
                     };
-                    Some(begin)
+                    Some(offset)
                 }
                 _ => None,
             }
         } else {
-            match self.holes.iter_mut().filter(|h| h.size() >= pages).max() {
+            match self.holes.iter_mut().filter(|h| h.size() >= len).max() {
                 Some(hole) => {
                     let start = hole.from;
-                    hole.from += pages;
+                    hole.from += len;
                     Some(start)
                 }
                 _ => None,
@@ -321,41 +270,71 @@ where
         }
     }
 
-    fn dealloc(&mut self, begin: u16, size: u16) {
-        if let Some(hole) = self.holes.iter_mut().find(|h| h.to == begin) {
-            hole.to += size;
-        } else if let Some(hole) = self.holes.iter_mut().find(|h| h.from == begin + size) {
-            hole.from = begin;
-        } else if let Some(slot) = self.holes.iter_mut().find(|h| h.size() == 0) {
-            slot.from = begin;
-            slot.to = begin + size;
+    fn alloc_ref(&mut self) -> Result<usize, Error<E>> {
+        if let Some((ref_idx, _)) = self
+            .index
+            .iter()
+            .enumerate()
+            .find(|(_, rec_ref)| !(**rec_ref).is_deleted() && !(**rec_ref).in_use())
+        {
+            Ok(ref_idx)
+        } else if let Some((ref_idx, _)) = self
+            .index
+            .iter()
+            .enumerate()
+            .find(|(_, rec_ref)| (**rec_ref).is_deleted())
+        {
+            Ok(ref_idx)
+        } else {
+            Err(Error::StoreOverflow)
         }
     }
 
-    fn find_ref(&mut self, key: &[u8]) -> Result<Option<RecordRef>, StoreError<E>> {
-        assert!(!key.is_empty());
-        if !self.is_open {
-            return Err(StoreError::StoreClosed);
+    fn free_ref(&mut self, offset: u32, size: u32) {
+        if let Some(hole) = self.holes.iter_mut().find(|h| h.to == offset) {
+            hole.to += size;
+        } else if let Some(hole) = self.holes.iter_mut().find(|h| h.from == offset + size) {
+            hole.from = offset;
+        } else if let Some(slot) = self.holes.iter_mut().find(|h| h.size() == 0) {
+            slot.from = offset;
+            slot.to = offset + size;
         }
-        let mut buf = [0; MAX_PAGE_SIZE];
-        let hash = RecordRef::hash(key);
-        for skip in 0..REFS_LEN {
-            if let Some(rec_ref) = self
-                .refs
+    }
+
+    fn find_record(&mut self, key: &[u8]) -> Result<Option<Record>, Error<E>> {
+        assert!(!key.is_empty());
+        let hash = crate::record::hash_key(key);
+        for skip in 0..CAPACITY {
+            if let Some((ref_idx, _)) = self
+                .index
                 .iter()
-                .filter(|r| r.hash == hash)
+                .enumerate()
+                .filter(|(_, rec_ref)| {
+                    !rec_ref.is_deleted() && rec_ref.in_use() && rec_ref.get_hash() == hash
+                })
                 .nth(skip as usize)
-                .copied()
             {
+                let addr_ptr = HEADER_SIZE + ref_idx * REF_SIZE + 2;
                 self.adapter
-                    .read(
-                        rec_ref.page * A::PAGE_SIZE,
-                        &mut buf[0..A::PAGE_SIZE as usize],
-                    )
-                    .map_err(StoreError::AdapterError)?;
-                let key_len = buf[0] as usize;
-                if &buf[1..(key_len + 1)] == key {
-                    return Ok(Some(rec_ref));
+                    .read(addr_ptr as u32, &mut self.buf[..4])
+                    .map_err(Error::AdapterError)?;
+
+                let addr = BigEndian::read_u32(&self.buf[..4]);
+                let ref_meta_size = usize::min(BUFFER_SIZE, 5 + key.len());
+                self.adapter
+                    .read(addr, &mut self.buf[0..ref_meta_size])
+                    .map_err(Error::AdapterError)?;
+
+                let key_len = self.buf[4];
+                if key == &self.buf[5..(5 + key_len as usize)] {
+                    let meta = Record {
+                        ref_idx,
+                        key_len,
+                        addr,
+                        value_cap: BigEndian::read_u16(&self.buf[..2]),
+                        value_len: BigEndian::read_u16(&self.buf[2..4]),
+                    };
+                    return Ok(Some(meta));
                 }
             } else {
                 return Ok(None);
@@ -364,25 +343,67 @@ where
         Ok(None)
     }
 
-    fn save_ref(&mut self, rec_ref: RecordRef) -> Result<(), StoreError<E>> {
-        let mut buf = [0; REF_SIZE as usize];
-        rec_ref.serialize(&mut buf);
-        let offset = A::PAGE_SIZE + rec_ref.idx * REF_SIZE;
+    fn save_ref(&mut self, ref_idx: usize, addr: u32) -> Result<(), Error<E>> {
+        assert!(ref_idx < self.index.len());
+        BigEndian::write_u16(&mut self.buf[0..2], self.index[ref_idx].data);
+        BigEndian::write_u32(&mut self.buf[2..6], addr);
+        let offset = HEADER_SIZE + ref_idx * REF_SIZE;
         self.adapter
-            .write(offset as u16, &buf)
-            .map_err(StoreError::AdapterError)
+            .write(offset as u32, &self.buf[..6])
+            .map_err(Error::AdapterError)
     }
 
-    fn reset(&mut self) {
-        for (idx, rec_ref) in self.refs.iter_mut().enumerate() {
-            rec_ref.idx = idx as u16;
-            rec_ref.page = 0;
+    fn save_record_header(&mut self, record: &Record, key: Option<&[u8]>) -> Result<(), Error<E>> {
+        BigEndian::write_u16(&mut self.buf[0..2], record.value_cap);
+        BigEndian::write_u16(&mut self.buf[2..4], record.value_len);
+
+        let chunk = if let Some(key) = key {
+            self.buf[4] = key.len() as u8;
+            self.buf[5..(key.len() + 5)].copy_from_slice(key);
+            key.len() + 5
+        } else {
+            4
+        };
+
+        self.adapter
+            .write(record.addr, &self.buf[..chunk])
+            .map_err(Error::AdapterError)
+    }
+
+    fn patch_value(
+        &mut self,
+        record: &mut Record,
+        offset: u16,
+        patch: &[u8],
+    ) -> Result<(u16, u16), Error<E>> {
+        if offset > record.value_len {
+            return Err(Error::InvalidPatchOffset);
         }
-        for (idx, hole) in self.holes.iter_mut().enumerate() {
-            hole.idx = idx;
-            hole.from = 0;
+
+        let requested_len = offset + patch.len() as u16;
+        if requested_len > record.value_cap {
+            if self
+                .alloc(
+                    Some(record.addr + record.size()),
+                    (requested_len - record.value_cap) as u32,
+                )
+                .is_none()
+            {
+                return Err(Error::StoreOverflow);
+            }
+            record.value_cap = requested_len;
         }
-        self.holes[0].from = self.index_pages + 1;
-        self.holes[0].to = A::TOTAL_PAGES;
+
+        let addr = record.addr + record.key_len as u32 + offset as u32 + 5;
+        self.adapter
+            .write(addr, patch)
+            .map_err(Error::AdapterError)?;
+
+        if requested_len > record.value_len {
+            record.value_len = requested_len;
+            self.save_record_header(&record, None)?;
+        }
+
+        Ok((record.value_len, record.value_cap))
     }
 }

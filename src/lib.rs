@@ -1,31 +1,31 @@
-#![no_std]
+//#![no_std]
 
 mod hole;
-mod record_ref;
+mod record;
 mod store;
 
 pub use store::KVStore;
 
 pub trait StoreAdapter {
-    const MAGIC: [u8; 4];
-    const TOTAL_PAGES: u16;
-    const PAGE_SIZE: u16;
+    const MAGIC: [u8; 3];
+    const PAGES: u16;
+    const PAGE_SIZE: u32;
 
     type Error;
 
-    fn write(&mut self, addr: u16, data: &[u8]) -> Result<(), Self::Error>;
-    fn read(&mut self, addr: u16, buff: &mut [u8]) -> Result<(), Self::Error>;
+    fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error>;
+    fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
 }
 
-#[derive(Debug)]
-pub enum StoreError<E> {
+#[derive(Debug, PartialEq)]
+pub enum Error<E> {
     AdapterError(E),
+    InvalidVersion,
+    InvalidCapacity,
+    InvalidPatchOffset,
     StoreNotFound,
     StoreClosed,
-    Overflow,
-    AppendFailed,
-    IndexOverflow,
-    ValueOverflow,
+    StoreOverflow,
     KeyNofFound,
-    InvalidVersion,
+    Overread,
 }

@@ -1,18 +1,31 @@
 # kvs
 
-[PoC] Key-Value Store.
+[PoC] Key-Value Store backed by SRAM/FRAM/MRAM/EEPROM.
 
 ## Limitations
 
-* Store capacity: 256 records
-* Max key size: 15 bytes
-* Max record size: 4095 bytes
-* Supported page sizes: 16-128 bytes
-
-## Semantics
-
+* Store capacity: 32-4096 records
+* Max key size: 250 bytes
+* Max value size: 64 kilobytes
 * Store adapter must support partial page write and multipage read.
-* `append` is guaranteed for the last added key only.
+
+## Store memory layout
+
+magic | ver | cap | index     | records
+------|-----|-----|-----------|----------
+  24  |  8  |  16 | ref * cap | rec * cap
+
+### Record reference layout
+
+hash  | deleted | in use | address
+------|---------|--------|--------
+  14  |    1    |   1    |  32
+
+### Record layout
+
+vcap | vlen | klen | key      | value
+-----|------|------|----------|---------
+ 16  |  16  |   8  | klen * 8 | vcap * 8
 
 ## License
 
@@ -28,4 +41,4 @@ at your option.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
-dual licensed as above, without any additional terms or conditions.
+dual licensed as above, without any additional terms or conditions.s
