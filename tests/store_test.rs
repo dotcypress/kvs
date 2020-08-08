@@ -150,7 +150,7 @@ fn test_append() {
 }
 
 #[test]
-fn test_append_with_hole() {
+fn test_patch_with_hole() {
   let mut buf = [0; 255];
   let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
 

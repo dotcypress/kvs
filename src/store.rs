@@ -191,7 +191,7 @@ where
         assert!(!key.is_empty() && key.len() <= MAX_KEY_SIZE as usize);
 
         if let Some(rec) = self.find_record(key)? {
-            self.free_ref(rec.addr, rec.size());
+            self.free(rec.addr, rec.size());
             self.index[rec.ref_idx].set_deleted();
             self.save_ref(rec.ref_idx, u32::MAX)?;
             Ok(true)
@@ -234,6 +234,26 @@ where
         Ok((read_len as u16, rec.value_len, rec.value_cap))
     }
 
+    fn alloc_ref(&mut self) -> Result<usize, Error<E>> {
+        if let Some((ref_idx, _)) = self
+            .index
+            .iter()
+            .enumerate()
+            .find(|(_, rec_ref)| !(**rec_ref).is_deleted() && !(**rec_ref).in_use())
+        {
+            Ok(ref_idx)
+        } else if let Some((ref_idx, _)) = self
+            .index
+            .iter()
+            .enumerate()
+            .find(|(_, rec_ref)| (**rec_ref).is_deleted())
+        {
+            Ok(ref_idx)
+        } else {
+            Err(Error::StoreOverflow)
+        }
+    }
+
     fn alloc(&mut self, offset: Option<u32>, len: u32) -> Option<u32> {
         if let Some(offset) = offset {
             match self
@@ -270,27 +290,7 @@ where
         }
     }
 
-    fn alloc_ref(&mut self) -> Result<usize, Error<E>> {
-        if let Some((ref_idx, _)) = self
-            .index
-            .iter()
-            .enumerate()
-            .find(|(_, rec_ref)| !(**rec_ref).is_deleted() && !(**rec_ref).in_use())
-        {
-            Ok(ref_idx)
-        } else if let Some((ref_idx, _)) = self
-            .index
-            .iter()
-            .enumerate()
-            .find(|(_, rec_ref)| (**rec_ref).is_deleted())
-        {
-            Ok(ref_idx)
-        } else {
-            Err(Error::StoreOverflow)
-        }
-    }
-
-    fn free_ref(&mut self, offset: u32, size: u32) {
+    fn free(&mut self, offset: u32, size: u32) {
         if let Some(hole) = self.holes.iter_mut().find(|h| h.to == offset) {
             hole.to += size;
         } else if let Some(hole) = self.holes.iter_mut().find(|h| h.from == offset + size) {
