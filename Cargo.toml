@@ -14,3 +14,13 @@ authors = ["Vitaly Domnikov <oss@vitaly.codes>"]
 [dependencies]
 byteorder = { version = "1.3.2", default-features = false }
 hash32 = "0.1.1"
+
+[features]
+default = []
+maxCap64 = []
+maxCap128 = []
+maxCap256 = []
+maxCap512 = []
+maxCap1024= []
+maxCap2048= []
+maxCap4096= []

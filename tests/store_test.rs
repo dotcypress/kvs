@@ -1,21 +1,21 @@
 use kvs::{Error, KVStore, StoreAdapter};
 
-struct MockAdapter {
+struct MemAdapter {
   pub mem: Vec<u8>,
 }
 
-impl MockAdapter {
-  pub fn new(mem_size: usize) -> Self {
+impl MemAdapter {
+  pub fn new() -> Self {
     Self {
-      mem: vec![0xff; mem_size],
+      mem: vec![0xff; MemAdapter::PAGES as usize * MemAdapter::PAGE_SIZE as usize],
     }
   }
 }
 
-impl StoreAdapter for MockAdapter {
-  const MAGIC: [u8; 3] = *b"kvs";
-  const PAGES: u16 = 1;
-  const PAGE_SIZE: u32 = 4_096;
+impl StoreAdapter for MemAdapter {
+  const MAGIC: [u8; 4] = *b"kvs1";
+  const PAGES: u16 = 256;
+  const PAGE_SIZE: u32 = 64;
   type Error = ();
 
   fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
@@ -25,15 +25,20 @@ impl StoreAdapter for MockAdapter {
   }
 
   fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
+    let page_offset = addr % Self::PAGE_SIZE;
+    if data.len() as u32 + page_offset > Self::PAGE_SIZE {
+      println!("roll-over: {} {}", addr, data.len() as u32 + page_offset);
+      return Err(());
+    }
     let offset = addr as usize;
-    &mut self.mem[offset..(offset + data.len())].copy_from_slice(data);
+    self.mem[offset..(offset + data.len())].copy_from_slice(data);
     Ok(())
   }
 }
 
 #[test]
 fn test_open() {
-  let store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let store = KVStore::open(MemAdapter::new(), true).unwrap();
   let adapter = store.close();
   KVStore::open(adapter, false).unwrap();
 }
@@ -41,7 +46,7 @@ fn test_open() {
 #[test]
 fn test_insert() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert(b"foo", b"bar").unwrap();
   let (n, len, cap) = store.load(b"foo", &mut buf).unwrap();
@@ -55,7 +60,7 @@ fn test_insert() {
 #[test]
 fn test_reopen() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert(b"foo", b"bar").unwrap();
 
@@ -73,11 +78,15 @@ fn test_reopen() {
 #[test]
 fn test_reinsert() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
-  store.insert(b"foo", b"one").unwrap();
-  store.insert(b"foo", b"two").unwrap();
-  store.insert(b"foo", b"three").unwrap();
+  store.insert(b"foo", b"Lorem").unwrap();
+  store.insert(b"foo", b"ipsum").unwrap();
+  store.insert(b"foo", b"dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua").unwrap();
+  let (_, len, cap) = store.load(b"foo", &mut buf).unwrap();
+  assert_eq!(len, 110);
+  assert_eq!(cap, 110);
+
   store.insert(b"foo", b"bar").unwrap();
   let (n, len, cap) = store.load(b"foo", &mut buf).unwrap();
 
@@ -90,7 +99,7 @@ fn test_reinsert() {
 #[test]
 fn test_insert_alloc() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store
     .insert_with_capacity(b"foo", b"bar", Some(16))
@@ -106,7 +115,7 @@ fn test_insert_alloc() {
 #[test]
 fn test_patch() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store
     .insert_with_capacity(b"foo", b"aar", Some(16))
@@ -127,7 +136,7 @@ fn test_patch() {
 #[test]
 fn test_append() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert_with_capacity(b"foo", b"bar", Some(7)).unwrap();
   let (n, len, cap) = store.load(b"foo", &mut buf).unwrap();
@@ -152,7 +161,7 @@ fn test_append() {
 #[test]
 fn test_patch_with_hole() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert_with_capacity(b"foo", b"bar", Some(7)).unwrap();
   store.load(b"foo", &mut buf).unwrap();
@@ -164,7 +173,7 @@ fn test_patch_with_hole() {
 #[test]
 fn test_patch_realloc() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert_with_capacity(b"foo", b"bar", Some(7)).unwrap();
   let (len, cap) = store.patch(b"foo", 3, b" baz bar").unwrap();
@@ -182,7 +191,7 @@ fn test_patch_realloc() {
 #[test]
 fn test_append_realloc() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert_with_capacity(b"foo", b"bar", Some(7)).unwrap();
   let (len, cap) = store.append(b"foo", b" baz bar").unwrap();
@@ -200,7 +209,7 @@ fn test_append_realloc() {
 #[test]
 fn test_remove() {
   let mut buf = [0; 255];
-  let mut store = KVStore::open(MockAdapter::new(2048), true).unwrap();
+  let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
 
   store.insert(b"foo", b"bar").unwrap();
   store.remove(b"foo").unwrap();

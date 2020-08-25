@@ -8,17 +8,17 @@ struct MemAdapter {
 }
 
 impl MemAdapter {
-    pub fn new(mem_size: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            mem: vec![0xff; mem_size],
+            mem: vec![0xff; MemAdapter::PAGES as usize * MemAdapter::PAGE_SIZE as usize],
         }
     }
 }
 
 impl StoreAdapter for MemAdapter {
-    const MAGIC: [u8; 3] = *b"kvs";
-    const PAGES: u16 = 1;
-    const PAGE_SIZE: u32 = 4_096;
+    const MAGIC: [u8; 4] = *b"kvs1";
+    const PAGES: u16 = 256;
+    const PAGE_SIZE: u32 = 16;
     type Error = ();
 
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
@@ -49,7 +49,7 @@ impl StoreAdapter for MemAdapter {
 
 fn main() {
     let mut buf = [0; 255];
-    let mut store = KVStore::open(MemAdapter::new(10_000), true).unwrap();
+    let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
     store.insert(b"foo", b"lorem-ipsum").unwrap();
 
     let adapter = store.close();

@@ -13,7 +13,7 @@
 
 magic | ver | cap | index     | records
 ------|-----|-----|-----------|----------
-  24  |  8  |  16 | ref * cap | rec * cap
+  32  |  8  |  16 | ref * cap | rec * cap
 
 ### Record reference layout
 

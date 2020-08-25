@@ -1,18 +1,16 @@
 use byteorder::{BigEndian, ByteOrder};
 
+use crate::config;
 use crate::hole::Hole;
 use crate::record::{hash_key, Record, RecordRef};
 use crate::{Error, StoreAdapter};
 
-const CAPACITY: usize = 32;
 const BUFFER_SIZE: usize = 256;
-
-const VERSION: u8 = 0;
-const HEADER_SIZE: usize = 6;
+const HEADER_SIZE: usize = 7;
 const REF_SIZE: usize = 6;
-const HOLES_LEN: usize = CAPACITY / 3;
+const HOLES_LEN: usize = config::CAPACITY / 4;
 const MAX_KEY_SIZE: usize = BUFFER_SIZE - 6;
-const INDEX_SIZE: usize = REF_SIZE * CAPACITY;
+const INDEX_SIZE: usize = REF_SIZE * config::CAPACITY;
 const METADATA_SIZE: usize = HEADER_SIZE + INDEX_SIZE;
 const INDEX_LOAD_BATCH_SIZE: usize = BUFFER_SIZE / REF_SIZE * REF_SIZE;
 
@@ -20,7 +18,7 @@ pub struct KVStore<A: StoreAdapter> {
     adapter: A,
     buf: [u8; BUFFER_SIZE],
     holes: [Hole; HOLES_LEN],
-    index: [RecordRef; CAPACITY],
+    index: [RecordRef; config::CAPACITY],
 }
 
 impl<A, E> KVStore<A>
@@ -35,7 +33,7 @@ where
         let mut store = KVStore {
             adapter,
             buf: [0; BUFFER_SIZE],
-            index: [RecordRef::default(); CAPACITY],
+            index: [RecordRef::default(); config::CAPACITY],
             holes: [Hole::default(); HOLES_LEN],
         };
         store.holes[0].from = METADATA_SIZE as u32;
@@ -46,7 +44,7 @@ where
             .read(0, &mut store.buf[0..HEADER_SIZE as usize])
             .map_err(Error::AdapterError)?;
 
-        if store.buf[0..3] != A::MAGIC {
+        if store.buf[0..4] != A::MAGIC {
             return if allow_create {
                 store.format()?;
                 Ok(store)
@@ -55,17 +53,17 @@ where
             };
         }
 
-        if store.buf[3] != VERSION {
+        if store.buf[4] != config::VERSION {
             return Err(Error::InvalidVersion);
         }
 
-        if BigEndian::read_u16(&store.buf[4..6]) as usize != CAPACITY {
+        if BigEndian::read_u16(&store.buf[5..7]) as usize != config::CAPACITY {
             return Err(Error::InvalidCapacity);
         }
 
         let mut ref_idx = 0;
         let mut offset = HEADER_SIZE;
-        while ref_idx < CAPACITY {
+        while ref_idx < config::CAPACITY {
             let batch = usize::min(METADATA_SIZE - offset, INDEX_LOAD_BATCH_SIZE);
             let refs_per_batch = batch / REF_SIZE;
 
@@ -113,16 +111,16 @@ where
         while offset < METADATA_SIZE {
             let batch = usize::min(METADATA_SIZE - offset, BUFFER_SIZE);
             self.adapter
-                .write(offset as u32, &self.buf[..batch])
+                .write_paged(offset as u32, &self.buf[..batch])
                 .map_err(Error::AdapterError)?;
             offset += batch;
         }
 
-        self.buf[0..3].copy_from_slice(&A::MAGIC);
-        self.buf[3] = VERSION;
-        BigEndian::write_u16(&mut self.buf[4..6], CAPACITY as u16);
+        self.buf[0..4].copy_from_slice(&A::MAGIC);
+        self.buf[4] = config::VERSION;
+        BigEndian::write_u16(&mut self.buf[5..7], config::CAPACITY as u16);
         self.adapter
-            .write(0, &self.buf[..6])
+            .write_paged(0, &self.buf[..7])
             .map_err(Error::AdapterError)
     }
 
@@ -153,7 +151,7 @@ where
 
         if let Some(addr) = self.alloc(None, record.size()) {
             self.adapter
-                .write(addr + key.len() as u32 + 5, val)
+                .write_paged(addr + key.len() as u32 + 5, val)
                 .map_err(Error::AdapterError)?;
             record.addr = addr;
             self.index[ref_idx].load_hash(hash_key(key));
@@ -304,7 +302,7 @@ where
     fn find_record(&mut self, key: &[u8]) -> Result<Option<Record>, Error<E>> {
         assert!(!key.is_empty());
         let hash = crate::record::hash_key(key);
-        for skip in 0..CAPACITY {
+        for skip in 0..config::CAPACITY {
             if let Some((ref_idx, _)) = self
                 .index
                 .iter()
@@ -349,7 +347,7 @@ where
         BigEndian::write_u32(&mut self.buf[2..6], addr);
         let offset = HEADER_SIZE + ref_idx * REF_SIZE;
         self.adapter
-            .write(offset as u32, &self.buf[..6])
+            .write_paged(offset as u32, &self.buf[..6])
             .map_err(Error::AdapterError)
     }
 
@@ -366,7 +364,7 @@ where
         };
 
         self.adapter
-            .write(record.addr, &self.buf[..chunk])
+            .write_paged(record.addr, &self.buf[..chunk])
             .map_err(Error::AdapterError)
     }
 
@@ -396,7 +394,7 @@ where
 
         let addr = record.addr + record.key_len as u32 + offset as u32 + 5;
         self.adapter
-            .write(addr, patch)
+            .write_paged(addr, patch)
             .map_err(Error::AdapterError)?;
 
         if requested_len > record.value_len {
