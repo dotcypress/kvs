@@ -15,7 +15,7 @@ impl MemAdapter {
 impl StoreAdapter for MemAdapter {
   const MAGIC: [u8; 4] = *b"kvs1";
   const PAGES: u16 = 256;
-  const PAGE_SIZE: u32 = 64;
+  const PAGE_SIZE: u32 = 8;
   type Error = ();
 
   fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
