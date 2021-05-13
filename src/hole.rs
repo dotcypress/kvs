@@ -2,8 +2,23 @@ use core::cmp::{Eq, Ord, Ordering, PartialEq};
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Hole {
-    pub from: u32,
-    pub to: u32,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Hole {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    pub fn reset(&mut self) {
+        self.end = 0;
+        self.start = 0;
+    }
+
+    pub fn size(&self) -> usize {
+        self.end - self.start
+    }
 }
 
 impl Ord for Hole {
@@ -20,19 +35,8 @@ impl PartialOrd for Hole {
 
 impl PartialEq for Hole {
     fn eq(&self, other: &Hole) -> bool {
-        self.from == other.from && self.to == other.to
+        self.start == other.start && self.end == other.end
     }
 }
 
 impl Eq for Hole {}
-
-impl Hole {
-    pub fn size(&self) -> u32 {
-        self.to - self.from
-    }
-
-    pub fn reset(&mut self) {
-        self.to = 0;
-        self.from = 0;
-    }
-}

@@ -1,31 +1,49 @@
 # kvs
 
-[PoC] Key-Value Store backed by SRAM/FRAM/MRAM/EEPROM.
+`[no_std]` Key-Value Store with small memory footprint, intended to use in resource-constrained environments.
+
 
 ## Limitations
 
-* Store capacity: 32-4096 records
-* Max key size: 250 bytes
-* Max value size: 64 kilobytes
 * Store adapter must support partial page write and multipage read.
+* Max capacity: 65535 records
+* Max key size: 128 bytes
+* Max value size: 64 kilobytes
 
-## Store memory layout
+## API
 
-magic | ver | cap | index     | records
-------|-----|-----|-----------|----------
-  32  |  8  |  16 | ref * cap | rec * cap
+* insert
+* insert_with_capacity
+* patch
+* append
+
+* contains_key
+* keys
+
+* load
+* load_with_offset
+
+* remove
+
+## Store header memory layout
+
+magic | version |  seed   | capacity | index
+------|---------|---------|----------|-----------------------
+  32  |    8    |    8    |    16    | CAPACITY * rec_ref_len
 
 ### Record reference layout
 
-hash  | deleted | in use | address
-------|---------|--------|--------
-  14  |    1    |   1    |  32
+ hash | fingerprint | size | addr
+------|-------------|------|------
+  16  |     16      |  16  |  32
+
+sectors?
 
 ### Record layout
 
-vcap | vlen | klen | key      | value
------|------|------|----------|---------
- 16  |  16  |   8  | klen * 8 | vcap * 8
+key_len |     key     | val_len | val_cap |   val
+--------|-------------|---------|---------|-------------
+   8    | key_len * 8 |   16    |   16    | val_cap * 8
 
 ## License
 

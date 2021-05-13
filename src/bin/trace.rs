@@ -2,72 +2,68 @@ extern crate kvs;
 
 use kvs::*;
 
+const SIZE: usize = 1024;
+pub const MAGIC: u32 = 0xf00d;
+pub const CAPACITY: usize = 64;
+pub const MAX_HOLES: usize = 64;
+
+type TraceStore = KVStore<TraceMemoryAdapter, CAPACITY, MAX_HOLES>;
+
 #[derive(Debug)]
-struct MemAdapter {
-    pub mem: Vec<u8>,
+struct TraceMemoryAdapter {
+    pub memory: Vec<u8>,
 }
 
-impl MemAdapter {
+impl TraceMemoryAdapter {
     pub fn new() -> Self {
         Self {
-            mem: vec![0xff; MemAdapter::PAGES as usize * MemAdapter::PAGE_SIZE as usize],
+            memory: vec![0x00; SIZE],
         }
     }
 }
 
-impl StoreAdapter for MemAdapter {
-    const MAGIC: [u8; 4] = *b"kvs1";
-    const PAGES: u16 = 256;
-    const PAGE_SIZE: u32 = 16;
+impl StoreAdapter for TraceMemoryAdapter {
     type Error = ();
 
-    fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-        let offset = addr as usize;
+    fn read(&mut self, addr: usize, buf: &mut [u8]) -> Result<(), Self::Error> {
+        if buf.len() + addr > SIZE {
+            return Err(());
+        }
         println!(
-            "\tmem  read: {}\t@{}..{}",
+            "\tmem  read: {}\t@{}..{}\t{:?}",
             buf.len(),
-            offset,
-            offset + buf.len()
+            addr,
+            addr + buf.len(),
+            buf
         );
-        buf.copy_from_slice(&self.mem[offset..(offset + buf.len())]);
+        buf.copy_from_slice(&self.memory[addr..(addr + buf.len())]);
         Ok(())
     }
 
-    fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
-        let offset = addr as usize;
+    fn write(&mut self, addr: usize, data: &[u8]) -> Result<(), Self::Error> {
+        if addr + data.len() > SIZE {
+            return Err(());
+        }
         println!(
-            "\tmem write: {}\t@{}..{}",
+            "\tmem write: {}\t@{}..{}\t{:?}",
             data.len(),
-            offset,
-            offset + data.len()
+            addr,
+            addr + data.len(),
+            data
         );
-        let window = &mut self.mem[offset..(offset + data.len())];
-        window.copy_from_slice(data);
+        self.memory[addr..(addr + data.len())].copy_from_slice(data);
         Ok(())
+    }
+
+    fn space(&self) -> usize {
+        SIZE
     }
 }
 
 fn main() {
-    let mut buf = [0; 255];
-    let mut store = KVStore::open(MemAdapter::new(), true).unwrap();
+    let mut store = TraceStore::open(TraceMemoryAdapter::new(), MAGIC, true).unwrap();
     store.insert(b"foo", b"lorem-ipsum").unwrap();
 
     let adapter = store.close();
-    let mut store = KVStore::open(adapter, false).unwrap();
-
-    let res = store.load(b"foo", &mut buf).unwrap();
-    println!(
-        "{:?} {}",
-        res,
-        String::from_utf8_lossy(&buf[..res.0 as usize])
-    );
-
-    store.patch(b"foo", 5, b" ").unwrap();
-
-    let res = store.load(b"foo", &mut buf).unwrap();
-    println!(
-        "{:?} {}",
-        res,
-        String::from_utf8_lossy(&buf[..res.0 as usize])
-    );
+    TraceStore::open(adapter, MAGIC, false).unwrap();
 }
