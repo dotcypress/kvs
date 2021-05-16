@@ -14,3 +14,4 @@ authors = ["Vitaly Domnikov <oss@vitaly.codes>"]
 [dependencies]
 byteorder = { version = "1.4.3", default-features = false }
 hash32 = "0.2.1"
+modular-bitfield = "0.11.2"

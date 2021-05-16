@@ -1,49 +1,16 @@
 # kvs
 
-`[no_std]` Key-Value Store with small memory footprint, intended to use in resource-constrained environments.
+🚧 Work in progress.
 
+`[no_std]` Key-Value Store backed by RAM/SRAM/FRAM/MRAM/EEPROM with tiny memory footprint, intended to use in resource-constrained environments.
 
-## Limitations
+## Features/Limitations
 
+* Max capacity: 65,400 records
+* Max store size: 16 MB
+* Max key size: 128 B
+* Max value size: 32 KB
 * Store adapter must support partial page write and multipage read.
-* Max capacity: 65535 records
-* Max key size: 128 bytes
-* Max value size: 64 kilobytes
-
-## API
-
-* insert
-* insert_with_capacity
-* patch
-* append
-
-* contains_key
-* keys
-
-* load
-* load_with_offset
-
-* remove
-
-## Store header memory layout
-
-magic | version |  seed   | capacity | index
-------|---------|---------|----------|-----------------------
-  32  |    8    |    8    |    16    | CAPACITY * rec_ref_len
-
-### Record reference layout
-
- hash | fingerprint | size | addr
-------|-------------|------|------
-  16  |     16      |  16  |  32
-
-sectors?
-
-### Record layout
-
-key_len |     key     | val_len | val_cap |   val
---------|-------------|---------|---------|-------------
-   8    | key_len * 8 |   16    |   16    | val_cap * 8
 
 ## License
 

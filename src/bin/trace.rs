@@ -2,13 +2,6 @@ extern crate kvs;
 
 use kvs::*;
 
-const SIZE: usize = 1024;
-pub const MAGIC: u32 = 0xf00d;
-pub const CAPACITY: usize = 64;
-pub const MAX_HOLES: usize = 64;
-
-type TraceStore = KVStore<TraceMemoryAdapter, CAPACITY, MAX_HOLES>;
-
 #[derive(Debug)]
 struct TraceMemoryAdapter {
     pub memory: Vec<u8>,
@@ -17,7 +10,7 @@ struct TraceMemoryAdapter {
 impl TraceMemoryAdapter {
     pub fn new() -> Self {
         Self {
-            memory: vec![0x00; SIZE],
+            memory: vec![0; 0x10000],
         }
     }
 }
@@ -26,44 +19,59 @@ impl StoreAdapter for TraceMemoryAdapter {
     type Error = ();
 
     fn read(&mut self, addr: usize, buf: &mut [u8]) -> Result<(), Self::Error> {
-        if buf.len() + addr > SIZE {
+        if buf.len() + addr > self.memory.len() {
             return Err(());
         }
         println!(
-            "\tmem  read: {}\t@{}..{}\t{:?}",
+            "R: {:3} [0x{:03x}..0x{:03x}] {:02x?}",
             buf.len(),
             addr,
             addr + buf.len(),
-            buf
+            if buf.len() > 16 { &buf[..16] } else { &buf }
         );
         buf.copy_from_slice(&self.memory[addr..(addr + buf.len())]);
         Ok(())
     }
 
     fn write(&mut self, addr: usize, data: &[u8]) -> Result<(), Self::Error> {
-        if addr + data.len() > SIZE {
+        if addr + data.len() > self.memory.len() {
             return Err(());
         }
         println!(
-            "\tmem write: {}\t@{}..{}\t{:?}",
+            "W: {:3} [0x{:03x}..0x{:03x}] {:02x?}",
             data.len(),
             addr,
             addr + data.len(),
-            data
+            if data.len() > 16 { &data[..16] } else { &data }
         );
         self.memory[addr..(addr + data.len())].copy_from_slice(data);
         Ok(())
     }
 
     fn space(&self) -> usize {
-        SIZE
+        self.memory.len()
     }
 }
 
 fn main() {
-    let mut store = TraceStore::open(TraceMemoryAdapter::new(), MAGIC, true).unwrap();
-    store.insert(b"foo", b"lorem-ipsum").unwrap();
+    const BUCKETS: usize = 0x1000;
+    type TraceStore = KVStore<TraceMemoryAdapter, BUCKETS, 24>;
+    let mut store = TraceStore::create(TraceMemoryAdapter::new(), 0xf00d).unwrap();
+    store
+        .insert(b"foo", b"consectetur adipiscing elit")
+        .unwrap();
+    store.insert(b"bar", b"dolor sit amet").unwrap();
+    store.insert(b"foo", b"lorem ipsum").unwrap();
 
-    let adapter = store.close();
-    TraceStore::open(adapter, MAGIC, false).unwrap();
+    use core::mem::size_of;
+    type Dummy = MemoryAdapter<0>;
+    println!("1: {} B", size_of::<KVStore<Dummy, BUCKETS, 1>>());
+    println!("8: {} B", size_of::<KVStore<Dummy, BUCKETS, 8>>());
+    println!("16: {} B", size_of::<KVStore<Dummy, BUCKETS, 16>>());
+    println!("32: {} B", size_of::<KVStore<Dummy, BUCKETS, 32>>());
+    println!("64: {} B", size_of::<KVStore<Dummy, BUCKETS, 64>>());
+    println!("128: {} B", size_of::<KVStore<Dummy, BUCKETS, 128>>());
+    println!("256: {} B", size_of::<KVStore<Dummy, BUCKETS, 256>>());
+    println!("512: {} B", size_of::<KVStore<Dummy, BUCKETS, 512>>());
+    println!("1024: {} B", size_of::<KVStore<Dummy, BUCKETS, 1024>>());
 }
