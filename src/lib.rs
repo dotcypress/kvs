@@ -13,7 +13,6 @@ pub use store::*;
 pub const MAX_KEY_LEN: usize = 128;
 pub const MAX_VALUE_LEN: usize = 32 * 1024;
 
-const MAX_HOPS: usize = 8;
 const BUCKET_BATCH_SIZE: usize = 32;
 
 #[derive(Debug)]
@@ -28,7 +27,7 @@ impl Bucket {
     }
 
     pub(crate) fn addr(&self) -> usize {
-       self.raw.addr() as usize
+        self.raw.addr() as usize
     }
 
     pub fn key_len(&self) -> usize {
@@ -47,12 +46,13 @@ impl Bucket {
 #[derive(Debug, PartialEq)]
 pub enum Error<E> {
     AdapterError(E),
-    StoreNotFound,
-    ReadOnlyStore,
-    InvalidBuckets,
-    StoreOverflow,
-    KeyNofFound,
+    IndexOverflow,
+    InvalidCapacity,
     InvalidPatchOffset,
+    KeyNofFound,
+    ReadOnlyStore,
+    StoreNotFound,
+    StoreOverflow,
 }
 
 #[bitfield]

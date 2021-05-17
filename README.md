@@ -6,11 +6,12 @@
 
 ## Features/Limitations
 
+* Storage overhead: 8 bytes per bucket.
+* RAM overhead: zero bytes for read-only store or 16 bytes per allocation slot.
 * Max capacity: 65,400 records
 * Max store size: 16 MB
-* Max key size: 128 B
 * Max value size: 32 KB
-* Store adapter must support partial page write and multipage read.
+* Max key size: 128 B
 
 ## License
 

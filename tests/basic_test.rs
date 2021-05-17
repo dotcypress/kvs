@@ -62,7 +62,7 @@ fn test_reopen_store_with_invalid_buckets() {
     let store = WrongCapacityStore::open(adapter, tiny::MAGIC);
     assert!(store.is_err());
     if let Err(err) = store {
-        assert_eq!(err, kvs::Error::InvalidBuckets);
+        assert_eq!(err, kvs::Error::InvalidCapacity);
     }
 }
 
@@ -82,6 +82,7 @@ fn test_list_keys() {
     check.insert("foo");
     check.insert("bar");
     check.insert("baz");
+    assert_eq!(check.len(), 3);
 
     let mut store = tiny::create_store();
     store.insert(b"foo", b"bar").unwrap();

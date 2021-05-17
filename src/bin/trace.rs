@@ -10,7 +10,7 @@ struct TraceMemoryAdapter {
 impl TraceMemoryAdapter {
     pub fn new() -> Self {
         Self {
-            memory: vec![0; 0x10000],
+            memory: vec![0; 0x1000],
         }
     }
 }
@@ -54,7 +54,7 @@ impl StoreAdapter for TraceMemoryAdapter {
 }
 
 fn main() {
-    const BUCKETS: usize = 0x1000;
+    const BUCKETS: usize = 256;
     type TraceStore = KVStore<TraceMemoryAdapter, BUCKETS, 24>;
     let mut store = TraceStore::create(TraceMemoryAdapter::new(), 0xf00d).unwrap();
     store
@@ -62,16 +62,4 @@ fn main() {
         .unwrap();
     store.insert(b"bar", b"dolor sit amet").unwrap();
     store.insert(b"foo", b"lorem ipsum").unwrap();
-
-    use core::mem::size_of;
-    type Dummy = MemoryAdapter<0>;
-    println!("1: {} B", size_of::<KVStore<Dummy, BUCKETS, 1>>());
-    println!("8: {} B", size_of::<KVStore<Dummy, BUCKETS, 8>>());
-    println!("16: {} B", size_of::<KVStore<Dummy, BUCKETS, 16>>());
-    println!("32: {} B", size_of::<KVStore<Dummy, BUCKETS, 32>>());
-    println!("64: {} B", size_of::<KVStore<Dummy, BUCKETS, 64>>());
-    println!("128: {} B", size_of::<KVStore<Dummy, BUCKETS, 128>>());
-    println!("256: {} B", size_of::<KVStore<Dummy, BUCKETS, 256>>());
-    println!("512: {} B", size_of::<KVStore<Dummy, BUCKETS, 512>>());
-    println!("1024: {} B", size_of::<KVStore<Dummy, BUCKETS, 1024>>());
 }

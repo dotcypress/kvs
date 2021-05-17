@@ -37,16 +37,14 @@ impl PartialEq for Slot {
 impl Eq for Slot {}
 
 pub struct Alloc<const SLOTS: usize> {
-    slots: [Slot; SLOTS],
-    #[allow(dead_code)]
-    space: usize,
+    pub(crate) slots: [Slot; SLOTS],
 }
 
 impl<const SLOTS: usize> Alloc<SLOTS> {
     pub fn new(start: usize, space: usize) -> Self {
         let mut slots = [Slot::default(); SLOTS];
-        slots[0] = Slot::new(start, space  + start);
-        Self { space, slots }
+        slots[0] = Slot::new(start, space + start);
+        Self { slots }
     }
 
     pub fn alloc(&mut self, size: usize, addr: Option<usize>) -> Option<usize> {
@@ -54,18 +52,18 @@ impl<const SLOTS: usize> Alloc<SLOTS> {
             match self
                 .slots
                 .iter_mut()
-                .find(|h| addr >= h.start && addr < h.end && h.size() - (addr - h.start) >= size)
+                .find(|s| addr >= s.start && addr < s.end && s.size() - (addr - s.start) >= size)
             {
-                Some(hole) if hole.start == addr => {
-                    hole.start += size;
+                Some(slot) if slot.start == addr => {
+                    slot.start += size;
                     Some(addr)
                 }
-                Some(hole) => {
-                    let hole_end = hole.end;
-                    hole.end = addr;
-                    if let Some(unused_hole) = self.slots.iter_mut().find(|h| h.size() == 0) {
-                        unused_hole.start = addr + size;
-                        unused_hole.end = hole_end;
+                Some(slot) => {
+                    let slot_end = slot.end;
+                    slot.end = addr;
+                    if let Some(unused_slot) = self.slots.iter_mut().find(|s| s.size() == 0) {
+                        unused_slot.start = addr + size;
+                        unused_slot.end = slot_end;
                     } else {
                         return None;
                     };
@@ -74,22 +72,22 @@ impl<const SLOTS: usize> Alloc<SLOTS> {
                 _ => None,
             }
         } else {
-            let hole = self.slots.iter_mut().filter(|h| h.size() >= size).max()?;
-            let start = hole.start;
-            hole.start += size;
+            let slot = self.slots.iter_mut().filter(|s| s.size() >= size).max()?;
+            let start = slot.start;
+            slot.start += size;
             Some(start)
         }
     }
 
     pub fn free(&mut self, addr: usize, size: usize) {
-        let hole_end = addr + size;
-        if let Some(hole) = self.slots.iter_mut().find(|h| h.end == addr) {
-            hole.end += size;
-        } else if let Some(hole) = self.slots.iter_mut().find(|h| h.start == hole_end) {
-            hole.start = addr;
-        } else if let Some(slot) = self.slots.iter_mut().find(|h| h.size() == 0) {
+        let slot_end = addr + size;
+        if let Some(slot) = self.slots.iter_mut().find(|s| s.end == addr) {
+            slot.end += size;
+        } else if let Some(slot) = self.slots.iter_mut().find(|s| s.start == slot_end) {
             slot.start = addr;
-            slot.end = hole_end;
+        } else if let Some(slot) = self.slots.iter_mut().find(|s| s.size() == 0) {
+            slot.start = addr;
+            slot.end = slot_end;
         }
     }
 }

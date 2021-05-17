@@ -25,8 +25,6 @@ where
     }
 
     pub fn create(adapter: A, magic: u32) -> Result<Self, Error<E>> {
-        assert!(BUCKETS.is_power_of_two(), "Buckets must be power of two");
-
         let header = RawStoreHeader::new()
             .with_magic(magic)
             .with_buckets(BUCKETS as u16);
@@ -54,11 +52,6 @@ where
     }
 
     pub fn open(adapter: A, magic: u32) -> Result<Self, Error<E>> {
-        assert!(
-            BUCKETS == 0 || BUCKETS.is_power_of_two(),
-            "Buckets must be zero or power of two"
-        );
-
         let mut adapter = adapter;
         Self::load_header(&mut adapter, magic)?;
 
@@ -69,8 +62,6 @@ where
     }
 
     pub fn open_or_create(adapter: A, magic: u32, overwrite: bool) -> Result<Self, Error<E>> {
-        assert!(BUCKETS.is_power_of_two(), "Buckets must be power of two");
-
         let mut adapter = adapter;
         match Self::load_header(&mut adapter, magic) {
             Ok(_) => {
@@ -79,7 +70,7 @@ where
                 Ok(store)
             }
             Err(Error::StoreNotFound) => Self::create(adapter, magic),
-            Err(Error::InvalidBuckets) if overwrite => Self::create(adapter, magic),
+            Err(Error::InvalidCapacity) if overwrite => Self::create(adapter, magic),
             Err(err) => Err(err),
         }
     }
@@ -101,7 +92,7 @@ where
                 && !val.is_empty()
         );
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(MAX_HOPS, &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, &key);
         let hash = hopper.hash();
         let mut free_bucket: Option<Bucket> = None;
 
@@ -133,7 +124,7 @@ where
             }
         }
 
-        let mut bucket = free_bucket.ok_or(Error::StoreOverflow)?;
+        let mut bucket = free_bucket.ok_or(Error::IndexOverflow)?;
         let addr = match self.alloc.alloc(key_len + val_len, None) {
             Some(addr) => addr,
             None => return Err(Error::StoreOverflow),
@@ -239,7 +230,7 @@ where
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(MAX_HOPS, &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, &key);
         let hash = hopper.hash();
 
         for index in hopper {
@@ -358,7 +349,7 @@ where
                 }
 
                 if header.buckets() as usize != BUCKETS {
-                    return Err(Error::InvalidBuckets);
+                    return Err(Error::InvalidCapacity);
                 }
 
                 Ok(header)

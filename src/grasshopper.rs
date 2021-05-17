@@ -10,8 +10,6 @@ pub struct Grasshopper<const SIZE: usize> {
 
 impl<const SIZE: usize> Grasshopper<SIZE> {
     pub fn new(hops: usize, key: &[u8]) -> Self {
-        assert!(SIZE.is_power_of_two(), "Hop size must be power of two");
-
         let mut hasher = Murmur3Hasher::default();
         hasher.write(key);
         let hash = hasher.finish() as u16;
