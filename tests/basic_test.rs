@@ -170,7 +170,7 @@ fn test_patch() {
     let mut store = tiny::create_store();
 
     store.insert(b"foo", b"Bar").unwrap();
-    let bucket = store.patch(b"foo", b"b", 0).unwrap();
+    let bucket = store.patch(b"foo", 0, b"b").unwrap();
     assert_eq!(bucket.key_len(), 3);
 
     let mut scratch = [0; 16];
@@ -208,7 +208,7 @@ fn test_patch_with_hole() {
     let mut store = tiny::create_store();
     store.insert(b"foo", b"bar").unwrap();
 
-    let err = store.patch(b"foo", b"baz", 4).unwrap_err();
+    let err = store.patch(b"foo", 4, b"baz").unwrap_err();
     assert_eq!(err, kvs::Error::InvalidPatchOffset);
 }
 
@@ -217,7 +217,7 @@ fn test_patch_resize() {
     let mut store = tiny::create_store();
     store.insert(b"foo", b"bar").unwrap();
 
-    let bucket = store.patch(b"foo", b" baz bar", 3).unwrap();
+    let bucket = store.patch(b"foo", 3, b" baz bar").unwrap();
     assert_eq!(bucket.val_len(), 11);
 
     let mut scratch = [0; 16];

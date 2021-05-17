@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2018"
 license = "MIT/Apache-2.0"
 readme = "README.md"
-description = "[PoC] Key-Value Store"
+description = "Embedded Key-Value Store"
 categories = ["no-std"]
 keywords = ["key-value"]
 documentation = "https://docs.rs/kvs"
@@ -15,4 +15,3 @@ authors = ["Vitaly Domnikov <oss@vitaly.codes>"]
 byteorder = { version = "1.4.3", default-features = false }
 hash32 = "0.2.1"
 modular-bitfield = "0.11.2"
-fakedata_generator = "0.1.0"

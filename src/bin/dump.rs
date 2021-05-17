@@ -1,20 +1,23 @@
 extern crate kvs;
 
-use fakedata_generator::*;
 use kvs::*;
 use std::io::*;
 
-const SIZE: usize = 2000;
-const BUCKETS: usize = 50;
+const SIZE: usize = 1024;
+const BUCKETS: usize = 32;
 const SLOTS: usize = 1;
 
 type MemoryStore = KVStore<MemoryAdapter<SIZE>, BUCKETS, SLOTS>;
 
 fn main() {
+    let started = std::time::SystemTime::now();
     let mut store = MemoryStore::create(MemoryAdapter::new([0; SIZE]), 0xf00d).unwrap();
-    for _ in 0..BUCKETS - 4 {
+    for _ in 0..BUCKETS - 10 {
         store
-            .insert(gen_ipv4().as_bytes(), gen_domain().as_bytes())
+            .insert(
+                format!("{:?}", started.elapsed().unwrap()).as_bytes(),
+                b"lorem ipsum",
+            )
             .unwrap();
     }
 

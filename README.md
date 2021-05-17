@@ -2,16 +2,16 @@
 
 🚧 Work in progress.
 
-`[no_std]` Key-Value Store backed by RAM/SRAM/FRAM/MRAM/EEPROM with tiny memory footprint, intended to use in resource-constrained environments.
+`[no_std]` Key-Value Store backed by RAM/SRAM/FRAM/MRAM/EEPROM, intended to use in resource-constrained environments.
 
 ## Features/Limitations
 
-* Storage overhead: 8 bytes per bucket.
-* RAM overhead: zero bytes for read-only store or 16 bytes per allocation slot.
-* Max capacity: 65,400 records
-* Max store size: 16 MB
+* Capacity: 1-65400 records, no dynamic resizing
+* RAM overhead: zero bytes for read-only store or 16 bytes per allocation slot
+* Storage overhead: 8 bytes per bucket
+* Max key size: 128 bytes
 * Max value size: 32 KB
-* Max key size: 128 B
+* Max store size: 16 MB
 
 ## License
 

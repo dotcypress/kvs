@@ -15,6 +15,8 @@ pub const MAX_VALUE_LEN: usize = 32 * 1024;
 
 const BUCKET_BATCH_SIZE: usize = 32;
 
+pub type Address = usize;
+
 #[derive(Debug)]
 pub struct Bucket {
     index: usize,
@@ -26,8 +28,8 @@ impl Bucket {
         self.index
     }
 
-    pub(crate) fn addr(&self) -> usize {
-        self.raw.addr() as usize
+    pub(crate) fn address(&self) -> Address {
+        self.raw.address() as Address
     }
 
     pub fn key_len(&self) -> usize {
@@ -69,16 +71,16 @@ pub(crate) struct RawBucket {
     in_use: bool,
     val_len: B15,
     key_len: B8,
-    addr: B24,
+    address: B24,
     hash: B16,
 }
 
 pub trait StoreAdapter {
     type Error;
 
-    fn read(&mut self, addr: usize, buf: &mut [u8]) -> Result<(), Self::Error>;
-    fn write(&mut self, addr: usize, data: &[u8]) -> Result<(), Self::Error>;
-    fn space(&self) -> usize;
+    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error>;
+    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error>;
+    fn max_address(&self) -> Address;
 }
 
 pub struct PagedMemoryAdapter<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
@@ -105,15 +107,15 @@ where
 {
     type Error = A::Error;
 
-    fn space(&self) -> usize {
-        self.inner.space()
+    fn max_address(&self) -> Address {
+        self.inner.max_address()
     }
 
-    fn read(&mut self, addr: usize, buf: &mut [u8]) -> Result<(), Self::Error> {
+    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
         self.inner.read(addr + OFFSET, buf)
     }
 
-    fn write(&mut self, addr: usize, data: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
         let addr = addr + OFFSET;
         let page_offset = addr % PAGE_SIZE;
         if page_offset + data.len() <= PAGE_SIZE {
@@ -156,7 +158,7 @@ impl<const SIZE: usize> MemoryAdapter<SIZE> {
 impl<const SIZE: usize> StoreAdapter for MemoryAdapter<SIZE> {
     type Error = ();
 
-    fn read(&mut self, addr: usize, buf: &mut [u8]) -> Result<(), Self::Error> {
+    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
         if addr + buf.len() > SIZE {
             return Err(());
         }
@@ -164,7 +166,7 @@ impl<const SIZE: usize> StoreAdapter for MemoryAdapter<SIZE> {
         Ok(())
     }
 
-    fn write(&mut self, addr: usize, data: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
         if addr + data.len() > SIZE {
             return Err(());
         }
@@ -172,7 +174,7 @@ impl<const SIZE: usize> StoreAdapter for MemoryAdapter<SIZE> {
         Ok(())
     }
 
-    fn space(&self) -> usize {
+    fn max_address(&self) -> Address {
         SIZE
     }
 }

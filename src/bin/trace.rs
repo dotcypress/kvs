@@ -18,7 +18,7 @@ impl TraceMemoryAdapter {
 impl StoreAdapter for TraceMemoryAdapter {
     type Error = ();
 
-    fn read(&mut self, addr: usize, buf: &mut [u8]) -> Result<(), Self::Error> {
+    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
         if buf.len() + addr > self.memory.len() {
             return Err(());
         }
@@ -33,7 +33,7 @@ impl StoreAdapter for TraceMemoryAdapter {
         Ok(())
     }
 
-    fn write(&mut self, addr: usize, data: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
         if addr + data.len() > self.memory.len() {
             return Err(());
         }
@@ -48,7 +48,7 @@ impl StoreAdapter for TraceMemoryAdapter {
         Ok(())
     }
 
-    fn space(&self) -> usize {
+    fn max_address(&self) -> Address {
         self.memory.len()
     }
 }

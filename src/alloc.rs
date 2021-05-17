@@ -1,13 +1,14 @@
+use crate::*;
 use core::cmp::{Eq, Ord, Ordering, PartialEq};
 
 #[derive(Debug, Default, Copy, Clone)]
 pub(crate) struct Slot {
-    start: usize,
-    end: usize,
+    start: Address,
+    end: Address,
 }
 
 impl Slot {
-    pub fn new(start: usize, end: usize) -> Self {
+    pub fn new(start: Address, end: Address) -> Self {
         Self { start, end }
     }
 
@@ -41,13 +42,15 @@ pub struct Alloc<const SLOTS: usize> {
 }
 
 impl<const SLOTS: usize> Alloc<SLOTS> {
-    pub fn new(start: usize, space: usize) -> Self {
+    pub fn new(start: Address, space: usize) -> Self {
         let mut slots = [Slot::default(); SLOTS];
-        slots[0] = Slot::new(start, space + start);
+        if SLOTS > 0 {
+            slots[0] = Slot::new(start, space + start);
+        }
         Self { slots }
     }
 
-    pub fn alloc(&mut self, size: usize, addr: Option<usize>) -> Option<usize> {
+    pub fn alloc(&mut self, size: usize, addr: Option<Address>) -> Option<Address> {
         if let Some(addr) = addr {
             match self
                 .slots
@@ -79,7 +82,7 @@ impl<const SLOTS: usize> Alloc<SLOTS> {
         }
     }
 
-    pub fn free(&mut self, addr: usize, size: usize) {
+    pub fn free(&mut self, addr: Address, size: usize) {
         let slot_end = addr + size;
         if let Some(slot) = self.slots.iter_mut().find(|s| s.end == addr) {
             slot.end += size;
