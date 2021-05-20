@@ -30,9 +30,6 @@ where
             .with_buckets(BUCKETS as u16);
 
         let mut adapter = adapter;
-        adapter
-            .write(0, &header.into_bytes())
-            .map_err(Error::AdapterError)?;
 
         let zeroes = [0; size_of::<RawBucket>() * BUCKET_BATCH_SIZE];
         let mut offset = size_of::<RawStoreHeader>();
@@ -47,6 +44,10 @@ where
                 .map_err(Error::AdapterError)?;
             offset += chunk;
         }
+
+        adapter
+            .write(0, &header.into_bytes())
+            .map_err(Error::AdapterError)?;
 
         Ok(Self::new(adapter))
     }
@@ -135,18 +136,18 @@ where
         bucket.raw.set_val_len(val_len as u16);
 
         self.adapter
-            .write(
-                size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index(),
-                &bucket.raw.clone().into_bytes(),
-            )
-            .map_err(Error::AdapterError)?;
-
-        self.adapter
             .write(bucket.address(), key)
             .map_err(Error::AdapterError)?;
 
         self.adapter
             .write(bucket.address() + key_len, val)
+            .map_err(Error::AdapterError)?;
+
+        self.adapter
+            .write(
+                size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index(),
+                &bucket.raw.clone().into_bytes(),
+            )
             .map_err(Error::AdapterError)?;
 
         Ok(bucket)
@@ -230,16 +231,12 @@ where
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(usize::min(MAX_HOPS, BUCKETS), &key);
         let hash = hopper.hash();
 
         for index in hopper {
             let raw = self.load_bucket(index)?;
-            if !raw.in_use() {
-                break;
-            }
-
-            if raw.hash() != hash || raw.key_len() as usize != key.len() {
+            if !raw.in_use()|| raw.hash() != hash || raw.key_len() as usize != key.len() {
                 continue;
             }
 

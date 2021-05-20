@@ -12,6 +12,7 @@ pub use store::*;
 
 pub const MAX_KEY_LEN: usize = 128;
 pub const MAX_VALUE_LEN: usize = 32 * 1024;
+pub const MAX_HOPS: usize = 512;
 
 const BUCKET_BATCH_SIZE: usize = 32;
 
