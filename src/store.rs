@@ -1,11 +1,34 @@
 use crate::*;
 use core::mem::size_of;
 
+pub struct StoreOptions {
+    magic: u32,
+    max_hops: usize,
+    overwrite: bool,
+}
+
+impl StoreOptions {
+    pub fn new(magic: u32, max_hops: usize) -> Self {
+        Self {
+            magic,
+            max_hops,
+            overwrite: false,
+        }
+    }
+
+    pub fn overwrite(self, overwrite: bool) -> Self {
+        let mut res = self;
+        res.overwrite = overwrite;
+        res
+    }
+}
+
 pub struct KVStore<A, const BUCKETS: usize, const SLOTS: usize>
 where
     A: StoreAdapter,
 {
     adapter: A,
+    opts: StoreOptions,
     alloc: Alloc<SLOTS>,
 }
 
@@ -17,16 +40,17 @@ where
 {
     const DATA_START: Address = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * BUCKETS;
 
-    fn new(adapter: A) -> Self {
+    fn new(adapter: A, opts: StoreOptions) -> Self {
         Self {
             alloc: Alloc::<SLOTS>::new(Self::DATA_START, adapter.max_address() - Self::DATA_START),
+            opts,
             adapter,
         }
     }
 
-    pub fn create(adapter: A, magic: u32) -> Result<Self, Error<E>> {
+    pub fn create(adapter: A, opts: StoreOptions) -> Result<Self, Error<E>> {
         let header = RawStoreHeader::new()
-            .with_magic(magic)
+            .with_magic(opts.magic)
             .with_buckets(BUCKETS as u16);
 
         let mut adapter = adapter;
@@ -49,29 +73,18 @@ where
             .write(0, &header.into_bytes())
             .map_err(Error::AdapterError)?;
 
-        Ok(Self::new(adapter))
+        Ok(Self::new(adapter, opts))
     }
 
-    pub fn open(adapter: A, magic: u32) -> Result<Self, Error<E>> {
+    pub fn open(adapter: A, opts: StoreOptions) -> Result<Self, Error<E>> {
         let mut adapter = adapter;
-        Self::load_header(&mut adapter, magic)?;
-
-        let mut store = Self::new(adapter);
-        store.load_index()?;
-
-        Ok(store)
-    }
-
-    pub fn open_or_create(adapter: A, magic: u32, overwrite: bool) -> Result<Self, Error<E>> {
-        let mut adapter = adapter;
-        match Self::load_header(&mut adapter, magic) {
+        match Self::load_header(&mut adapter, opts.magic) {
             Ok(_) => {
-                let mut store = Self::new(adapter);
+                let mut store = Self::new(adapter, opts);
                 store.load_index()?;
                 Ok(store)
             }
-            Err(Error::StoreNotFound) => Self::create(adapter, magic),
-            Err(Error::InvalidCapacity) if overwrite => Self::create(adapter, magic),
+            Err(Error::StoreNotFound) if opts.overwrite => Self::create(adapter, opts),
             Err(err) => Err(err),
         }
     }
@@ -231,12 +244,12 @@ where
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(usize::min(MAX_HOPS, BUCKETS), &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(self.opts.max_hops, &key);
         let hash = hopper.hash();
 
         for index in hopper {
             let raw = self.load_bucket(index)?;
-            if !raw.in_use()|| raw.hash() != hash || raw.key_len() as usize != key.len() {
+            if !raw.in_use() || raw.hash() != hash || raw.key_len() as usize != key.len() {
                 continue;
             }
 

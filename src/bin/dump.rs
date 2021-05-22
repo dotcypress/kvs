@@ -29,7 +29,7 @@ const KEY_COLLISIONS: [&str; 16] = [
 ];
 
 fn main() {
-    let mut store = MemoryStore::create(MemoryAdapter::new([0; SIZE]), 0xf00d).unwrap();
+    let mut store = MemoryStore::create(MemoryAdapter::new([0; SIZE]), StoreOptions::new(0xf00d, 32)).unwrap();
     for key in KEY_COLLISIONS.iter() {
         store.insert(key.as_bytes(), key.as_bytes()).unwrap();
     }

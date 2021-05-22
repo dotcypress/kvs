@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use kvs::{KVStore, MemoryAdapter};
+use kvs::{KVStore, MemoryAdapter, StoreOptions};
 
 const KEY_COLLISIONS: [&str; 16] = [
     "key_29589",
@@ -28,11 +28,12 @@ mod tiny {
     pub const STORE_SIZE: usize = 1024;
     pub const BUCKETS: usize = 64;
     pub const SLOTS: usize = 8;
+    pub const MAX_HOPS: usize = 64;
 
     pub type Store = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
     pub fn create_store() -> Store {
-        Store::create(MemoryAdapter::default(), MAGIC).unwrap()
+        Store::create(MemoryAdapter::default(), StoreOptions::new(MAGIC, MAX_HOPS)).unwrap()
     }
 }
 
@@ -45,7 +46,10 @@ fn test_create_store() {
 fn test_create_invalid_store() {
     type TooSmallStore = KVStore<MemoryAdapter<2>, { tiny::BUCKETS }, { tiny::SLOTS }>;
 
-    let store = TooSmallStore::create(MemoryAdapter::default(), tiny::MAGIC);
+    let store = TooSmallStore::create(
+        MemoryAdapter::default(),
+        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+    );
     assert!(store.is_err());
     if let Err(err) = store {
         assert_eq!(err, kvs::Error::AdapterError(()));
@@ -56,7 +60,7 @@ fn test_create_invalid_store() {
 fn test_reopen_store() {
     let adapter = tiny::create_store().close();
 
-    let store = tiny::Store::open(adapter, tiny::MAGIC);
+    let store = tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS));
     assert!(store.is_ok());
 }
 
@@ -64,7 +68,7 @@ fn test_reopen_store() {
 fn test_reopen_store_with_invalid_magic() {
     let adapter = tiny::create_store().close();
 
-    let store = tiny::Store::open(adapter, tiny::MAGIC + 1);
+    let store = tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC + 1, tiny::MAX_HOPS));
     assert!(store.is_err());
     if let Err(err) = store {
         assert_eq!(err, kvs::Error::StoreNotFound);
@@ -78,7 +82,7 @@ fn test_reopen_store_with_invalid_buckets() {
     type WrongCapacityStore =
         KVStore<MemoryAdapter<{ tiny::STORE_SIZE }>, { tiny::BUCKETS * 2 }, { tiny::SLOTS }>;
 
-    let store = WrongCapacityStore::open(adapter, tiny::MAGIC);
+    let store = WrongCapacityStore::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS));
     assert!(store.is_err());
     if let Err(err) = store {
         assert_eq!(err, kvs::Error::InvalidCapacity);
@@ -154,7 +158,7 @@ fn test_reopen() {
     store.insert(b"foo", b"bar").unwrap();
 
     let adapter = store.close();
-    let mut store = tiny::Store::open(adapter, tiny::MAGIC).unwrap();
+    let mut store = tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS)).unwrap();
 
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.key_len(), 3);
@@ -271,7 +275,6 @@ fn test_hash_collision() {
 
     store.insert(KEY_COLLISIONS[0].as_bytes(), b"foo").unwrap();
     store.insert(KEY_COLLISIONS[1].as_bytes(), b"bar").unwrap();
-
 
     let bucket = store
         .load(KEY_COLLISIONS[0].as_bytes(), &mut scratch)

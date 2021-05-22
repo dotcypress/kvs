@@ -56,7 +56,8 @@ impl StoreAdapter for TraceMemoryAdapter {
 fn main() {
     const BUCKETS: usize = 256;
     type TraceStore = KVStore<TraceMemoryAdapter, BUCKETS, 24>;
-    let mut store = TraceStore::create(TraceMemoryAdapter::new(), 0xf00d).unwrap();
+    let mut store =
+        TraceStore::create(TraceMemoryAdapter::new(), StoreOptions::new(0xf00d, 24)).unwrap();
     store
         .insert(b"foo", b"consectetur adipiscing elit")
         .unwrap();
