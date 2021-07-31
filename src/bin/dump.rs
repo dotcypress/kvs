@@ -29,10 +29,14 @@ const KEY_COLLISIONS: [&str; 16] = [
 ];
 
 fn main() {
-    let mut store = MemoryStore::create(MemoryAdapter::new([0; SIZE]), StoreOptions::new(0xf00d, 32)).unwrap();
+    let mut store =
+        MemoryStore::create(MemoryAdapter::new([0; SIZE]), StoreOptions::new(0xf00d, 32)).unwrap();
+    store.alloc(b"log", 21, Some(b'#')).unwrap();
     for key in KEY_COLLISIONS.iter() {
-        store.insert(key.as_bytes(), key.as_bytes()).unwrap();
+        store.insert(key.as_bytes(), b"---").unwrap();
     }
+
+    store.erase(b"log", b'$').unwrap();
 
     stdout().write_all(&store.close().memory).ok();
 }

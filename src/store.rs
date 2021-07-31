@@ -89,80 +89,40 @@ where
         }
     }
 
+    pub fn adapter_mut(&mut self) -> &mut A {
+        &mut self.adapter
+    }
+
     pub fn close(self) -> A {
         self.adapter
     }
 
+    pub fn alloc(
+        &mut self,
+        key: &[u8],
+        val_len: usize,
+        fill_with: Option<u8>,
+    ) -> Result<Bucket, Error<E>> {
+        let bucket = self.alloc_bucket(key, val_len)?;
+        if let Some(fill_with) = fill_with {
+            self.erase_bucket_content(&bucket, fill_with)?;
+        }
+        self.adapter
+            .write(bucket.address(), key)
+            .map_err(Error::AdapterError)?;
+        Ok(bucket)
+    }
+
     pub fn insert(&mut self, key: &[u8], val: &[u8]) -> Result<Bucket, Error<E>> {
-        if SLOTS == 0 {
-            return Err(Error::ReadOnlyStore);
-        }
-        let key_len = key.len();
-        let val_len = val.len();
-        assert!(
-            key_len <= MAX_KEY_LEN
-                && !key.is_empty()
-                && val_len <= MAX_VALUE_LEN
-                && !val.is_empty()
-        );
-
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, &key);
-        let hash = hopper.hash();
-        let mut free_bucket: Option<Bucket> = None;
-
-        for index in hopper {
-            let mut raw = self.load_bucket(index)?;
-            if raw.in_use() {
-                if raw.hash() != hash || raw.key_len() as usize != key.len() {
-                    continue;
-                }
-
-                let mut scratch = [0; MAX_KEY_LEN];
-                self.adapter
-                    .read(raw.address() as Address, &mut scratch[..key.len()])
-                    .map_err(Error::AdapterError)?;
-                if key != &scratch[..key.len()] {
-                    continue;
-                }
-
-                let bucket = Bucket { index, raw };
-                self.alloc.free(bucket.address(), bucket.record_len());
-                free_bucket = Some(bucket);
-                break;
-            } else {
-                raw.set_hash(hash);
-                raw.set_key_len(key_len as u8);
-
-                free_bucket = Some(Bucket { index, raw });
-                break;
-            }
-        }
-
-        let mut bucket = free_bucket.ok_or(Error::IndexOverflow)?;
-        let addr = match self.alloc.alloc(key_len + val_len, None) {
-            Some(addr) => addr,
-            None => return Err(Error::StoreOverflow),
-        };
-
-        bucket.raw.set_in_use(true);
-        bucket.raw.set_address(addr as u32);
-        bucket.raw.set_val_len(val_len as u16);
+        let bucket = self.alloc_bucket(key, val.len())?;
 
         self.adapter
             .write(bucket.address(), key)
             .map_err(Error::AdapterError)?;
 
         self.adapter
-            .write(bucket.address() + key_len, val)
+            .write(bucket.address() + key.len(), val)
             .map_err(Error::AdapterError)?;
-
-        self.adapter
-            .write(
-                size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index(),
-                &bucket.raw.clone().into_bytes(),
-            )
-            .map_err(Error::AdapterError)?;
-
         Ok(bucket)
     }
 
@@ -216,6 +176,26 @@ where
         let addr = bucket.address() + bucket.key_len() + offset;
         self.adapter.read(addr, buf).map_err(Error::AdapterError)?;
         Ok(bucket)
+    }
+
+    pub fn erase(&mut self, key: &[u8], fill_with: u8) -> Result<(), Error<E>> {
+        assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
+
+        match self.lookup(key) {
+            Ok(bucket) => {
+                self.erase_bucket_content(&bucket, fill_with)?;
+                let addr = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index();
+                self.adapter
+                    .write(addr, &RawBucket::new().into_bytes())
+                    .map_err(Error::AdapterError)?;
+                if SLOTS > 0 {
+                    self.alloc.free(bucket.address(), bucket.record_len());
+                }
+                Ok(())
+            }
+            Err(Error::KeyNofFound) => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 
     pub fn remove(&mut self, key: &[u8]) -> Result<(), Error<E>> {
@@ -277,19 +257,92 @@ where
         Ok(RawBucket::from_bytes(scratch))
     }
 
+    fn alloc_bucket(&mut self, key: &[u8], val_len: usize) -> Result<Bucket, Error<E>> {
+        if SLOTS == 0 {
+            return Err(Error::ReadOnlyStore);
+        }
+        let key_len = key.len();
+        assert!(
+            key_len <= MAX_KEY_LEN && !key.is_empty() && val_len <= MAX_VALUE_LEN && val_len > 0
+        );
+
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, &key);
+        let hash = hopper.hash();
+        let mut free_bucket: Option<Bucket> = None;
+
+        for index in hopper {
+            let mut raw = self.load_bucket(index)?;
+            if raw.in_use() {
+                if raw.hash() != hash || raw.key_len() as usize != key.len() {
+                    continue;
+                }
+
+                let mut scratch = [0; MAX_KEY_LEN];
+                self.adapter
+                    .read(raw.address() as Address, &mut scratch[..key.len()])
+                    .map_err(Error::AdapterError)?;
+                if key != &scratch[..key.len()] {
+                    continue;
+                }
+
+                let bucket = Bucket { index, raw };
+                self.alloc.free(bucket.address(), bucket.record_len());
+                free_bucket = Some(bucket);
+                break;
+            } else {
+                raw.set_hash(hash);
+                raw.set_key_len(key_len as u8);
+
+                free_bucket = Some(Bucket { index, raw });
+                break;
+            }
+        }
+
+        let mut bucket = free_bucket.ok_or(Error::IndexOverflow)?;
+        let addr = match self.alloc.alloc(key_len + val_len, None) {
+            Some(addr) => addr,
+            None => return Err(Error::StoreOverflow),
+        };
+
+        bucket.raw.set_in_use(true);
+        bucket.raw.set_address(addr as u32);
+        bucket.raw.set_val_len(val_len as u16);
+
+        self.adapter
+            .write(
+                size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index(),
+                &bucket.raw.clone().into_bytes(),
+            )
+            .map_err(Error::AdapterError)?;
+
+        Ok(bucket)
+    }
+
+    fn erase_bucket_content(&mut self, bucket: &Bucket, fill_with: u8) -> Result<(), Error<E>> {
+        const FILLER_LEN: usize = 8;
+        let filler: [u8; FILLER_LEN] = [fill_with; FILLER_LEN];
+
+        let mut offset = 0;
+        let mut chunk = usize::min(FILLER_LEN, bucket.record_len());
+        while chunk > 0 {
+            self.adapter
+                .write(bucket.address() + offset, &filler[..chunk])
+                .map_err(Error::AdapterError)?;
+            offset += chunk;
+            chunk = usize::min(FILLER_LEN, bucket.record_len() - offset);
+        }
+
+        Ok(())
+    }
+
     fn patch_value(
         &mut self,
         bucket: Bucket,
         offset: usize,
         patch: &[u8],
     ) -> Result<Bucket, Error<E>> {
-        let addr = bucket.address() + bucket.key_len() + offset;
-        self.adapter
-            .write(addr, patch)
-            .map_err(Error::AdapterError)?;
-
-        let mut bucket = bucket;
         let new_val_len = usize::max(offset + patch.len(), bucket.val_len());
+        let mut bucket = bucket;
 
         if new_val_len > bucket.val_len() {
             self.alloc
@@ -297,7 +350,7 @@ where
                     new_val_len - bucket.val_len(),
                     Some(bucket.address() + bucket.record_len()),
                 )
-                .ok_or(Error::StoreOverflow)?;
+                .ok_or(Error::ValueOverflow)?;
             bucket.raw.set_val_len(new_val_len as u16);
 
             let addr = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index();
@@ -305,6 +358,11 @@ where
                 .write(addr, &bucket.raw.clone().into_bytes())
                 .map_err(Error::AdapterError)?;
         }
+
+        let addr = bucket.address() + bucket.key_len() + offset;
+        self.adapter
+            .write(addr, patch)
+            .map_err(Error::AdapterError)?;
 
         Ok(bucket)
     }
@@ -403,7 +461,7 @@ where
 
             if raw.in_use() {
                 let key_len = raw.key_len() as usize;
-                let bucket = Bucket { raw, index };
+                let bucket = Bucket { index, raw };
 
                 let mut key_ref = KeyReference::new(bucket.raw.address() as Address, key_len);
                 self.store

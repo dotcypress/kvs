@@ -55,6 +55,7 @@ pub enum Error<E> {
     ReadOnlyStore,
     StoreNotFound,
     StoreOverflow,
+    ValueOverflow,
 }
 
 #[bitfield]

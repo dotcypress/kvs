@@ -15,7 +15,7 @@ impl<const SIZE: usize> Grasshopper<SIZE> {
         let hash = hasher.finish() as u16;
         let token = hash;
 
-        Self { hash, token, hops }
+        Self { hops, hash, token }
     }
 
     pub fn hash(&self) -> u16 {

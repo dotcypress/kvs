@@ -6,12 +6,12 @@
 
 ## Features/Limitations
 
-* Capacity: 1-65400 records, no dynamic resizing
+* Maximum capacity: 65400 records
 * RAM overhead: zero bytes for read-only store or 16 bytes per allocation slot
 * Storage overhead: 8 bytes per bucket
 * Max key size: 128 bytes
-* Max value size: 32 KB
-* Max store size: 16 MB
+* Max value size: 32 kilobytes
+* Max store size: 16 megabytes
 
 ## License
 

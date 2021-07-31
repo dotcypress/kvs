@@ -124,10 +124,9 @@ fn test_list_keys() {
 #[test]
 fn test_load() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"bar").unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.key_len(), 3);
     assert_eq!(bucket.val_len(), 3);
@@ -138,11 +137,10 @@ fn test_load() {
 #[test]
 fn test_load_rewrited() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"Ba").unwrap();
     store.insert(b"foo", b"bar").unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.key_len(), 3);
     assert_eq!(bucket.val_len(), 3);
@@ -153,13 +151,13 @@ fn test_load_rewrited() {
 #[test]
 fn test_reopen() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"bar").unwrap();
 
     let adapter = store.close();
-    let mut store = tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS)).unwrap();
+    let mut store =
+        tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS)).unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.key_len(), 3);
     assert_eq!(bucket.val_len(), 3);
@@ -170,12 +168,11 @@ fn test_reopen() {
 #[test]
 fn test_rewrite() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"Lorem").unwrap();
     store.insert(b"foo", b"ipsum").unwrap();
     store.insert(b"foo", b"dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua").unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.val_len(), 110);
 
@@ -189,15 +186,40 @@ fn test_rewrite() {
 }
 
 #[test]
+fn test_alloc() {
+    let mut store = tiny::create_store();
+    store.alloc(b"foo", 9, None).unwrap();
+
+    let mut scratch = [0; 16];
+    let bucket = store.load(b"foo", &mut scratch).unwrap();
+    assert_eq!(bucket.key_len(), 3);
+    assert_eq!(bucket.val_len(), 9);
+    assert_eq!(bucket.record_len(), 12);
+    assert_eq!(&scratch[..bucket.val_len()], &[0, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_alloc_fill() {
+    let mut store = tiny::create_store();
+    store.alloc(b"foo", 9, Some(b'x')).unwrap();
+
+    let mut scratch = [0; 16];
+    let bucket = store.load(b"foo", &mut scratch).unwrap();
+    assert_eq!(bucket.key_len(), 3);
+    assert_eq!(bucket.val_len(), 9);
+    assert_eq!(bucket.record_len(), 12);
+    assert_eq!(&scratch[..bucket.val_len()], b"xxxxxxxxx");
+}
+
+#[test]
 fn test_patch() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"Bar").unwrap();
 
     let bucket = store.patch(b"foo", 0, b"b").unwrap();
     assert_eq!(bucket.key_len(), 3);
 
+    let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.key_len(), 3);
     assert_eq!(bucket.val_len(), 3);
@@ -208,10 +230,9 @@ fn test_patch() {
 #[test]
 fn test_append() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"bar").unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
     assert_eq!(bucket.key_len(), 3);
     assert_eq!(&scratch[..bucket.val_len()], b"bar");
@@ -234,12 +255,21 @@ fn test_patch_with_hole() {
 }
 
 #[test]
+fn test_patch_no_space() {
+    let mut store = tiny::create_store();
+    store.insert(b"foo", b"bar").unwrap();
+    store.insert(b"bar", b"baz").unwrap();
+
+    let err = store.append(b"foo", b"baz").unwrap_err();
+    assert_eq!(err, kvs::Error::ValueOverflow);
+}
+
+#[test]
 fn test_patch_resize() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(b"foo", b"bar").unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store.patch(b"foo", 3, b" baz bar").unwrap();
     assert_eq!(bucket.val_len(), 11);
 
@@ -252,11 +282,30 @@ fn test_patch_resize() {
 #[test]
 fn test_remove() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
 
     store.insert(b"foo", b"bar").unwrap();
     store.remove(b"foo").unwrap();
 
+    let mut scratch = [0; 16];
+    let err = store.load(b"foo", &mut scratch).unwrap_err();
+    assert_eq!(err, kvs::Error::KeyNofFound);
+
+    store.insert(b"foo", b"bar").unwrap();
+
+    let bucket = store.load(b"foo", &mut scratch).unwrap();
+    assert_eq!(bucket.key_len(), 3);
+    assert_eq!(bucket.val_len(), 3);
+    assert_eq!(&scratch[..bucket.val_len()], b"bar");
+}
+
+#[test]
+fn test_erase() {
+    let mut store = tiny::create_store();
+
+    store.insert(b"foo", b"bar").unwrap();
+    store.erase(b"foo", 0).unwrap();
+
+    let mut scratch = [0; 16];
     let err = store.load(b"foo", &mut scratch).unwrap_err();
     assert_eq!(err, kvs::Error::KeyNofFound);
 
@@ -271,11 +320,10 @@ fn test_remove() {
 #[test]
 fn test_hash_collision() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(KEY_COLLISIONS[0].as_bytes(), b"foo").unwrap();
     store.insert(KEY_COLLISIONS[1].as_bytes(), b"bar").unwrap();
 
+    let mut scratch = [0; 16];
     let bucket = store
         .load(KEY_COLLISIONS[0].as_bytes(), &mut scratch)
         .unwrap();
@@ -292,12 +340,11 @@ fn test_hash_collision() {
 #[test]
 fn test_hash_collision_broken_chain() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     store.insert(KEY_COLLISIONS[0].as_bytes(), b"foo").unwrap();
     store.insert(KEY_COLLISIONS[1].as_bytes(), b"bar").unwrap();
     store.remove(KEY_COLLISIONS[0].as_bytes()).unwrap();
 
+    let mut scratch = [0; 16];
     let err = store
         .load(KEY_COLLISIONS[0].as_bytes(), &mut scratch)
         .unwrap_err();
@@ -313,12 +360,11 @@ fn test_hash_collision_broken_chain() {
 #[test]
 fn test_hash_collisions() {
     let mut store = tiny::create_store();
-    let mut scratch = [0; 16];
-
     for key in KEY_COLLISIONS.iter() {
         store.insert(key.as_bytes(), key.as_bytes()).unwrap();
     }
 
+    let mut scratch = [0; 16];
     for key in KEY_COLLISIONS.iter() {
         let bucket = store.load(key.as_bytes(), &mut scratch).unwrap();
         assert_eq!(bucket.val_len(), key.len());
