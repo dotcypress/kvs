@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use embedded_hal::blocking::spi;
 use embedded_hal::digital::v2::OutputPin;
 
@@ -16,6 +18,16 @@ pub enum Error<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> {
     ChipSelectError(CS::Error),
     TransferError(<SPI as spi::Transfer<u8>>::Error),
     WriteError(<SPI as spi::Write<u8>>::Error),
+}
+
+impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> Debug for Error<SPI, CS> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::ChipSelectError(_) => write!(f, "ChipSelect Error"),
+            Self::TransferError(_) => write!(f, "SPI Transfer Error"),
+            Self::WriteError(_) => write!(f, "SPI Write Error"),
+        }
+    }
 }
 
 #[derive(Debug)]
