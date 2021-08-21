@@ -28,7 +28,12 @@ pub struct FramStoreAdapter<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputP
 
 impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> FramStoreAdapter<SPI, CS> {
     pub fn new(spi: SPI, cs: CS, min_addr: Address, max_addr: Address) -> Self {
-        Self { spi, cs, max_addr, min_addr }
+        Self {
+            spi,
+            cs,
+            max_addr,
+            min_addr,
+        }
     }
 
     pub fn release(self) -> (SPI, CS) {
@@ -68,7 +73,7 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
 
     fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
         let addr = addr + self.min_addr;
-        assert!(buf.len() > 0 && addr + buf.len() < self.max_addr);
+        assert!(!buf.is_empty() && addr + buf.len() < self.max_addr);
 
         self.transaction(|spi| {
             spi.transfer(&mut [
@@ -86,7 +91,7 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
 
     fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
         let addr = addr + self.min_addr;
-        assert!(data.len() > 0 && addr + data.len() < self.max_addr);
+        assert!(!data.is_empty() && addr + data.len() < self.max_addr);
 
         self.transaction(|spi| {
             let we = [Command::WriteEnable as u8];
