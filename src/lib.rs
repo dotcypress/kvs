@@ -1,11 +1,13 @@
 #![no_std]
 
-mod alloc;
-mod grasshopper;
-mod store;
-
 use modular_bitfield::prelude::*;
 
+mod alloc;
+mod grasshopper;
+mod adapters;
+mod store;
+
+pub use adapters::*;
 pub use alloc::*;
 pub use grasshopper::*;
 pub use store::*;
