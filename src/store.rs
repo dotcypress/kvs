@@ -1,9 +1,10 @@
-use crate::*;
 use crate::adapters::*;
+use crate::*;
 use core::mem::size_of;
 
 pub struct StoreOptions {
     magic: u32,
+    nonce: u16,
     max_hops: usize,
     overwrite: bool,
 }
@@ -13,8 +14,15 @@ impl StoreOptions {
         Self {
             magic,
             max_hops,
+            nonce: 0,
             overwrite: false,
         }
+    }
+
+    pub fn nonce(self, nonce: u16) -> Self {
+        let mut res = self;
+        res.nonce = nonce;
+        res
     }
 
     pub fn overwrite(self, overwrite: bool) -> Self {
@@ -52,6 +60,7 @@ where
     pub fn create(adapter: A, opts: StoreOptions) -> Result<Self, Error<E>> {
         let header = RawStoreHeader::new()
             .with_magic(opts.magic)
+            .with_nonce(opts.nonce)
             .with_buckets(BUCKETS as u16);
 
         let mut adapter = adapter;
@@ -79,10 +88,12 @@ where
 
     pub fn open(adapter: A, opts: StoreOptions) -> Result<Self, Error<E>> {
         let mut adapter = adapter;
-        match Self::load_header(&mut adapter, opts.magic) {
+        match Self::load_header(&mut adapter, opts.magic, opts.nonce) {
             Ok(_) => {
                 let mut store = Self::new(adapter, opts);
-                store.load_index()?;
+                if SLOTS > 0 {
+                    store.load_index()?;
+                }
                 Ok(store)
             }
             Err(Error::StoreNotFound) if opts.overwrite => Self::create(adapter, opts),
@@ -225,7 +236,8 @@ where
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(self.opts.max_hops, &key);
+        let hopper: Grasshopper<BUCKETS> =
+            Grasshopper::new(self.opts.max_hops, self.opts.nonce, &key);
         let hash = hopper.hash();
 
         for index in hopper {
@@ -267,7 +279,7 @@ where
             key_len <= MAX_KEY_LEN && !key.is_empty() && val_len <= MAX_VALUE_LEN && val_len > 0
         );
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, self.opts.nonce, &key);
         let hash = hopper.hash();
         let mut free_bucket: Option<Bucket> = None;
 
@@ -369,10 +381,6 @@ where
     }
 
     fn load_index(&mut self) -> Result<(), Error<E>> {
-        if SLOTS == 0 {
-            return Ok(());
-        }
-
         const BUCKET_SIZE: usize = size_of::<RawBucket>();
         let mut buf = [0; BUCKET_SIZE * BUCKET_BATCH_SIZE];
         let mut offset = size_of::<RawStoreHeader>();
@@ -406,7 +414,7 @@ where
         Ok(())
     }
 
-    fn load_header(adapter: &mut A, magic: u32) -> Result<RawStoreHeader, Error<E>> {
+    fn load_header(adapter: &mut A, magic: u32, nonce: u16) -> Result<RawStoreHeader, Error<E>> {
         let mut buf = [0; size_of::<RawStoreHeader>()];
         adapter
             .read(0, &mut buf)
@@ -415,6 +423,10 @@ where
             .and_then(|header| {
                 if header.magic() != magic {
                     return Err(Error::StoreNotFound);
+                }
+
+                if header.nonce() != nonce {
+                    return Err(Error::InvalidNonce);
                 }
 
                 if header.buckets() as usize != BUCKETS {

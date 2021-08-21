@@ -52,6 +52,7 @@ pub enum Error<E> {
     AdapterError(E),
     IndexOverflow,
     InvalidCapacity,
+    InvalidNonce,
     InvalidPatchOffset,
     KeyNofFound,
     ReadOnlyStore,
@@ -63,9 +64,8 @@ pub enum Error<E> {
 #[bitfield]
 pub(crate) struct RawStoreHeader {
     magic: B32,
+    nonce: B16,
     buckets: B16,
-    #[skip]
-    dummy: B16,
 }
 
 #[bitfield]

@@ -9,13 +9,23 @@ pub struct Grasshopper<const SIZE: usize> {
 }
 
 impl<const SIZE: usize> Grasshopper<SIZE> {
-    pub fn new(hops: usize, key: &[u8]) -> Self {
+    pub fn new(hops: usize, nonce: u16, key: &[u8]) -> Self {
         let mut hasher = Murmur3Hasher::default();
+
+        if nonce != 0 {
+            let mut nonce_buf = [0; 2];
+            BigEndian::write_u16(&mut nonce_buf, nonce);
+            hasher.write(&nonce_buf);
+        }
+
         hasher.write(key);
         let hash = hasher.finish() as u16;
-        let token = hash;
 
-        Self { hops, hash, token }
+        Self {
+            hops,
+            hash,
+            token: hash,
+        }
     }
 
     pub fn hash(&self) -> u16 {

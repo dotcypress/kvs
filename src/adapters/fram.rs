@@ -4,12 +4,12 @@ use embedded_hal::digital::v2::OutputPin;
 use crate::adapters::*;
 
 enum Command {
-    ReadStatusRegister = 0b0000_0101,
-    WriteStatusRegister = 0b0000_0001,
-    Read = 0b0000_0011,
-    WriteEnable = 0b0000_0110,
-    Write = 0b0000_0010,
-    WriteDisable = 0b0000_0100,
+    ReadStatusRegister = 0b_0000_0101,
+    WriteStatusRegister = 0b_0000_0001,
+    Read = 0b_0000_0011,
+    WriteEnable = 0b_0000_0110,
+    Write = 0b_0000_0010,
+    WriteDisable = 0b_0000_0100,
 }
 
 pub enum Error<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> {
@@ -23,11 +23,12 @@ pub struct FramStoreAdapter<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputP
     spi: SPI,
     cs: CS,
     max_addr: Address,
+    min_addr: Address,
 }
 
 impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> FramStoreAdapter<SPI, CS> {
-    pub fn new(spi: SPI, cs: CS, max_addr: Address) -> Self {
-        Self { spi, cs, max_addr }
+    pub fn new(spi: SPI, cs: CS, min_addr: Address, max_addr: Address) -> Self {
+        Self { spi, cs, max_addr, min_addr }
     }
 
     pub fn release(self) -> (SPI, CS) {
@@ -66,6 +67,7 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
     type Error = Error<SPI, CS>;
 
     fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
+        let addr = addr + self.min_addr;
         assert!(buf.len() > 0 && addr + buf.len() < self.max_addr);
 
         self.transaction(|spi| {
@@ -83,6 +85,7 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
     }
 
     fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
+        let addr = addr + self.min_addr;
         assert!(data.len() > 0 && addr + data.len() < self.max_addr);
 
         self.transaction(|spi| {

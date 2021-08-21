@@ -1,16 +1,10 @@
 extern crate kvs;
 
-use kvs::*;
 use kvs::adapters::ram::MemoryAdapter;
+use kvs::*;
 use std::io::*;
 
-const SIZE: usize = 1024;
-const BUCKETS: usize = 32;
-const SLOTS: usize = 1;
-
-type MemoryStore = KVStore<MemoryAdapter<SIZE>, BUCKETS, SLOTS>;
-
-const KEY_COLLISIONS: [&str; 16] = [
+const KEYS: [&str; 18] = [
     "key_29589",
     "key_34447",
     "key_42952",
@@ -27,17 +21,22 @@ const KEY_COLLISIONS: [&str; 16] = [
     "key_221505",
     "key_227523",
     "key_231448",
+    "foo",
+    "bar",
 ];
 
-fn main() {
-    let mut store =
-        MemoryStore::create(MemoryAdapter::new([0; SIZE]), StoreOptions::new(0xf00d, 32)).unwrap();
-    store.alloc(b"log", 21, Some(b'#')).unwrap();
-    for key in KEY_COLLISIONS.iter() {
-        store.insert(key.as_bytes(), b"---").unwrap();
-    }
+const STORE_SIZE: usize = 512;
+const BUCKETS: usize = 24;
+const SLOTS: usize = 1;
 
-    store.erase(b"log", b'$').unwrap();
+type MemoryStore = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
+
+fn main() {
+    let opts = StoreOptions::new(0x4b1d, 32);
+    let mut store = MemoryStore::create(MemoryAdapter::default(), opts).unwrap();
+    for (idx, key) in KEYS.iter().enumerate() {
+        store.insert(key.as_bytes(), &[idx as u8]).unwrap();
+    }
 
     stdout().write_all(&store.close().memory).ok();
 }

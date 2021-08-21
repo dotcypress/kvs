@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
-use kvs::{KVStore, StoreOptions};
 use kvs::adapters::ram::*;
+use kvs::{Grasshopper, KVStore, StoreOptions};
+
+const KEY_COLLISION_HASH: u16 = 50952;
 
 const KEY_COLLISIONS: [&str; 16] = [
     "key_29589",
@@ -22,19 +24,31 @@ const KEY_COLLISIONS: [&str; 16] = [
     "key_231448",
 ];
 
+#[test]
+fn test_collisions() {
+    for key in KEY_COLLISIONS.iter() {
+        let hash = Grasshopper::<{ tiny::BUCKETS }>::new(tiny::MAX_HOPS, 0, key.as_bytes()).hash();
+        assert_eq!(KEY_COLLISION_HASH, hash);
+    }
+}
+
 mod tiny {
     use crate::*;
 
     pub const MAGIC: u32 = 0x4b1d;
-    pub const STORE_SIZE: usize = 1024;
-    pub const BUCKETS: usize = 64;
+    pub const STORE_SIZE: usize = 512;
+    pub const BUCKETS: usize = 24;
     pub const SLOTS: usize = 8;
-    pub const MAX_HOPS: usize = 64;
+    pub const MAX_HOPS: usize = 32;
 
     pub type Store = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
     pub fn create_store() -> Store {
         Store::create(MemoryAdapter::default(), StoreOptions::new(MAGIC, MAX_HOPS)).unwrap()
+    }
+
+    pub fn open_store(data: [u8; STORE_SIZE]) -> Store {
+        Store::open(MemoryAdapter::new(data), StoreOptions::new(MAGIC, MAX_HOPS)).unwrap()
     }
 }
 
@@ -73,6 +87,20 @@ fn test_reopen_store_with_invalid_magic() {
     assert!(store.is_err());
     if let Err(err) = store {
         assert_eq!(err, kvs::Error::StoreNotFound);
+    }
+}
+
+#[test]
+fn test_reopen_store_with_invalid_nonce() {
+    let adapter = tiny::create_store().close();
+
+    let store = tiny::Store::open(
+        adapter,
+        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS).nonce(1),
+    );
+    assert!(store.is_err());
+    if let Err(err) = store {
+        assert_eq!(err, kvs::Error::InvalidNonce);
     }
 }
 
@@ -361,14 +389,27 @@ fn test_hash_collision_broken_chain() {
 #[test]
 fn test_hash_collisions() {
     let mut store = tiny::create_store();
-    for key in KEY_COLLISIONS.iter() {
-        store.insert(key.as_bytes(), key.as_bytes()).unwrap();
+    for (idx, key) in KEY_COLLISIONS.iter().enumerate() {
+        store.insert(key.as_bytes(), &[idx as u8]).unwrap();
     }
 
     let mut scratch = [0; 16];
-    for key in KEY_COLLISIONS.iter() {
+    for (idx, key) in KEY_COLLISIONS.iter().enumerate() {
         let bucket = store.load(key.as_bytes(), &mut scratch).unwrap();
-        assert_eq!(bucket.val_len(), key.len());
-        assert_eq!(&scratch[..bucket.val_len()], key.as_bytes());
+        assert_eq!(bucket.val_len(), 1);
+        assert_eq!(&scratch[..bucket.val_len()], &[idx as u8]);
+    }
+}
+
+#[test]
+fn test_compatibility() {
+    let data = include_bytes!("./tiny.db");
+    let mut store = tiny::open_store(*data);
+
+    let mut scratch = [0; 16];
+    for (idx, key) in KEY_COLLISIONS.iter().enumerate() {
+        let bucket = store.load(key.as_bytes(), &mut scratch).unwrap();
+        assert_eq!(bucket.val_len(), 1);
+        assert_eq!(&scratch[..bucket.val_len()], &[idx as u8]);
     }
 }
