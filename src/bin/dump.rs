@@ -1,6 +1,7 @@
 extern crate kvs;
 
 use kvs::*;
+use kvs::adapters::ram::MemoryAdapter;
 use std::io::*;
 
 const SIZE: usize = 1024;

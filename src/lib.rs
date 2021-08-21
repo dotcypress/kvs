@@ -4,10 +4,10 @@ use modular_bitfield::prelude::*;
 
 mod alloc;
 mod grasshopper;
-mod adapters;
 mod store;
 
-pub use adapters::*;
+pub mod adapters;
+
 pub use alloc::*;
 pub use grasshopper::*;
 pub use store::*;
@@ -76,108 +76,4 @@ pub(crate) struct RawBucket {
     key_len: B8,
     address: B24,
     hash: B16,
-}
-
-pub trait StoreAdapter {
-    type Error;
-
-    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error>;
-    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error>;
-    fn max_address(&self) -> Address;
-}
-
-pub struct PagedMemoryAdapter<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
-where
-    A: StoreAdapter,
-{
-    inner: A,
-}
-
-impl<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
-    PagedMemoryAdapter<A, OFFSET, PAGES, PAGE_SIZE>
-where
-    A: StoreAdapter,
-{
-    pub fn new(inner: A) -> Self {
-        Self { inner }
-    }
-}
-
-impl<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize> StoreAdapter
-    for PagedMemoryAdapter<A, OFFSET, PAGES, PAGE_SIZE>
-where
-    A: StoreAdapter,
-{
-    type Error = A::Error;
-
-    fn max_address(&self) -> Address {
-        self.inner.max_address()
-    }
-
-    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
-        self.inner.read(addr + OFFSET, buf)
-    }
-
-    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
-        let addr = addr + OFFSET;
-        let page_offset = addr % PAGE_SIZE;
-        if page_offset + data.len() <= PAGE_SIZE {
-            return self.inner.write(addr, data);
-        }
-
-        let mut offset = 0;
-        let mut chunk = PAGE_SIZE - page_offset;
-        while chunk > 0 {
-            self.inner
-                .write(addr + offset, &data[offset..(offset + chunk)])?;
-            offset += chunk;
-            chunk = usize::min(PAGE_SIZE, data.len() - offset);
-        }
-
-        Ok(())
-    }
-}
-
-pub struct MemoryAdapter<const SIZE: usize> {
-    pub memory: [u8; SIZE],
-}
-
-impl<const SIZE: usize> Default for MemoryAdapter<SIZE> {
-    fn default() -> Self {
-        Self::new([0; SIZE])
-    }
-}
-
-impl<const SIZE: usize> MemoryAdapter<SIZE> {
-    pub fn new(memory: [u8; SIZE]) -> Self {
-        Self { memory }
-    }
-
-    pub fn free(self) -> [u8; SIZE] {
-        self.memory
-    }
-}
-
-impl<const SIZE: usize> StoreAdapter for MemoryAdapter<SIZE> {
-    type Error = ();
-
-    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
-        if addr + buf.len() > SIZE {
-            return Err(());
-        }
-        buf.copy_from_slice(&self.memory[addr..(addr + buf.len())]);
-        Ok(())
-    }
-
-    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
-        if addr + data.len() > SIZE {
-            return Err(());
-        }
-        self.memory[addr..(addr + data.len())].copy_from_slice(data);
-        Ok(())
-    }
-
-    fn max_address(&self) -> Address {
-        SIZE
-    }
 }

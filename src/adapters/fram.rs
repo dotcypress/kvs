@@ -1,7 +1,7 @@
 use embedded_hal::blocking::spi;
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::*;
+use crate::adapters::*;
 
 enum Command {
     ReadStatusRegister = 0b0000_0101,
@@ -30,14 +30,6 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> FramStoreAdapter<SP
         Self { spi, cs, max_addr }
     }
 
-    pub fn spi_mut(&mut self) -> &mut SPI {
-        &mut self.spi
-    }
-
-    pub fn cs_mut(&mut self) -> &mut CS {
-        &mut self.cs
-    }
-
     pub fn release(self) -> (SPI, CS) {
         (self.spi, self.cs)
     }
@@ -58,7 +50,7 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> FramStoreAdapter<SP
         })
     }
 
-    fn transaction<RES, TX: FnOnce(&mut SPI) -> Result<RES, Error<SPI, CS>>>(
+    pub fn transaction<RES, TX: FnOnce(&mut SPI) -> Result<RES, Error<SPI, CS>>>(
         &mut self,
         tx: TX,
     ) -> Result<RES, Error<SPI, CS>> {
@@ -77,17 +69,16 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
         assert!(buf.len() > 0 && addr + buf.len() < self.max_addr);
 
         self.transaction(|spi| {
-            let mut read = [
+            spi.transfer(&mut [
                 Command::Read as u8,
                 (addr >> 16) as u8,
                 (addr >> 8) as u8,
                 addr as u8,
-            ];
+            ])
+            .and_then(|_| spi.transfer(buf))
+            .map_err(Error::TransferError)?;
 
-            spi.transfer(&mut read)
-                .and_then(|_| spi.transfer(buf))
-                .map(|_| ())
-                .map_err(Error::TransferError)
+            Ok(())
         })
     }
 
@@ -95,24 +86,20 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
         assert!(data.len() > 0 && addr + data.len() < self.max_addr);
 
         self.transaction(|spi| {
-            let mut write = [
+            let we = [Command::WriteEnable as u8];
+            let wd = [Command::WriteDisable as u8];
+            let command = [
                 Command::Write as u8,
                 (addr >> 16) as u8,
                 (addr >> 8) as u8,
                 addr as u8,
             ];
-            let mut write_enable = [Command::WriteEnable as u8];
-            let mut write_disable = [Command::WriteDisable as u8];
 
-            spi.transfer(&mut write_enable)
-                .and_then(|_| spi.transfer(&mut write))
-                .map_err(Error::TransferError)
-                .and_then(|_| spi.write(data).map_err(Error::WriteError))
-                .and_then(|_| {
-                    spi.transfer(&mut write_disable)
-                        .map_err(Error::TransferError)
-                })
-                .map(|_| ())
+            spi.write(&we)
+                .and_then(|_| spi.write(&command))
+                .and_then(|_| spi.write(data))
+                .and_then(|_| spi.write(&wd))
+                .map_err(Error::WriteError)
         })
     }
 

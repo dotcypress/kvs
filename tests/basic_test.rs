@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use kvs::{KVStore, MemoryAdapter, StoreOptions};
+use kvs::{KVStore, StoreOptions};
+use kvs::adapters::ram::*;
 
 const KEY_COLLISIONS: [&str; 16] = [
     "key_29589",

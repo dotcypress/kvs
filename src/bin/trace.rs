@@ -1,5 +1,6 @@
 extern crate kvs;
 
+use kvs::adapters::StoreAdapter;
 use kvs::*;
 
 #[derive(Debug)]

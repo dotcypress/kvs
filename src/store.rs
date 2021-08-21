@@ -1,4 +1,5 @@
 use crate::*;
+use crate::adapters::*;
 use core::mem::size_of;
 
 pub struct StoreOptions {
