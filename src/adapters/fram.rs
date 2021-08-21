@@ -45,8 +45,8 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> FramStoreAdapter<SP
     pub fn write_status(&mut self, status: u8) -> Result<(), Error<SPI, CS>> {
         self.transaction(|spi| {
             spi.transfer(&mut [Command::WriteStatusRegister as u8, status])
-                .map(|_| ())
-                .map_err(Error::TransferError)
+                .map_err(Error::TransferError)?;
+            Ok(())
         })
     }
 
