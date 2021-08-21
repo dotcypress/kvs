@@ -94,19 +94,22 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
         assert!(!data.is_empty() && addr + data.len() < self.max_addr);
 
         self.transaction(|spi| {
-            let we = [Command::WriteEnable as u8];
-            let wd = [Command::WriteDisable as u8];
-            let command = [
+            spi.write(&[Command::WriteEnable as u8])
+                .map_err(Error::WriteError)
+        })?;
+
+        self.transaction(|spi| {
+            spi.write(&[
                 Command::Write as u8,
                 (addr >> 16) as u8,
                 (addr >> 8) as u8,
                 addr as u8,
-            ];
+            ])
+            .map_err(Error::WriteError)
+        })?;
 
-            spi.write(&we)
-                .and_then(|_| spi.write(&command))
-                .and_then(|_| spi.write(data))
-                .and_then(|_| spi.write(&wd))
+        self.transaction(|spi| {
+            spi.write(&[Command::WriteDisable as u8])
                 .map_err(Error::WriteError)
         })
     }
