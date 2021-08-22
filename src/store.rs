@@ -205,7 +205,7 @@ where
                 }
                 Ok(())
             }
-            Err(Error::KeyNofFound) => Ok(()),
+            Err(Error::KeyNotFound) => Ok(()),
             Err(err) => Err(err),
         }
     }
@@ -224,7 +224,7 @@ where
                 }
                 Ok(())
             }
-            Err(Error::KeyNofFound) => Ok(()),
+            Err(Error::KeyNotFound) => Ok(()),
             Err(err) => Err(err),
         }
     }
@@ -248,7 +248,7 @@ where
 
             let mut scratch = [0; MAX_KEY_LEN];
             self.adapter
-                .read(raw.address() as Address, &mut scratch)
+                .read(raw.address() as Address, &mut scratch[..key.len()])
                 .map_err(Error::AdapterError)?;
 
             if key != &scratch[..key.len()] {
@@ -258,7 +258,7 @@ where
             return Ok(Bucket { index, raw });
         }
 
-        Err(Error::KeyNofFound)
+        Err(Error::KeyNotFound)
     }
 
     fn load_bucket(&mut self, bucket_index: usize) -> Result<RawBucket, Error<E>> {

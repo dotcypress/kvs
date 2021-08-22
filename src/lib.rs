@@ -54,7 +54,7 @@ pub enum Error<E> {
     InvalidCapacity,
     InvalidNonce,
     InvalidPatchOffset,
-    KeyNofFound,
+    KeyNotFound,
     ReadOnlyStore,
     StoreNotFound,
     StoreOverflow,

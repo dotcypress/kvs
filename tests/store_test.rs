@@ -317,7 +317,7 @@ fn test_remove() {
 
     let mut scratch = [0; 16];
     let err = store.load(b"foo", &mut scratch).unwrap_err();
-    assert_eq!(err, kvs::Error::KeyNofFound);
+    assert_eq!(err, kvs::Error::KeyNotFound);
 
     store.insert(b"foo", b"bar").unwrap();
 
@@ -336,7 +336,7 @@ fn test_erase() {
 
     let mut scratch = [0; 16];
     let err = store.load(b"foo", &mut scratch).unwrap_err();
-    assert_eq!(err, kvs::Error::KeyNofFound);
+    assert_eq!(err, kvs::Error::KeyNotFound);
 
     store.insert(b"foo", b"bar").unwrap();
 
@@ -377,7 +377,7 @@ fn test_hash_collision_broken_chain() {
     let err = store
         .load(KEY_COLLISIONS[0].as_bytes(), &mut scratch)
         .unwrap_err();
-    assert_eq!(err, kvs::Error::KeyNofFound);
+    assert_eq!(err, kvs::Error::KeyNotFound);
 
     let bucket = store
         .load(KEY_COLLISIONS[1].as_bytes(), &mut scratch)

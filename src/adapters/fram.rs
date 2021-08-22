@@ -6,12 +6,11 @@ use embedded_hal::digital::v2::OutputPin;
 use crate::adapters::*;
 
 enum Command {
-    ReadStatusRegister = 0b_0000_0101,
-    WriteStatusRegister = 0b_0000_0001,
-    Read = 0b_0000_0011,
-    WriteEnable = 0b_0000_0110,
-    Write = 0b_0000_0010,
-    WriteDisable = 0b_0000_0100,
+    WriteStatusRegister = 0x01,
+    Write = 0x02,
+    Read = 0x03,
+    ReadStatusRegister = 0x05,
+    WriteEnable = 0x06,
 }
 
 pub enum Error<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> {
@@ -117,12 +116,8 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> StoreAdapter
                 (addr >> 8) as u8,
                 addr as u8,
             ])
+            .and_then(|_| spi.write(&data))
             .map_err(Error::WriteError)
-        })?;
-
-        self.transaction(|spi| {
-            spi.write(&[Command::WriteDisable as u8])
-                .map_err(Error::WriteError)
         })
     }
 
