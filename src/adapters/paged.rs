@@ -1,24 +1,23 @@
 use crate::adapters::*;
 
-pub struct PagedAdapter<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
+pub struct PagedAdapter<A, const PAGE_SIZE: usize>
 where
     A: StoreAdapter,
 {
     inner: A,
+    offset: usize,
 }
 
-impl<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
-    PagedAdapter<A, OFFSET, PAGES, PAGE_SIZE>
+impl<A, const PAGE_SIZE: usize> PagedAdapter<A, PAGE_SIZE>
 where
     A: StoreAdapter,
 {
-    pub fn new(inner: A) -> Self {
-        Self { inner }
+    pub fn new(inner: A, offset: usize) -> Self {
+        Self { inner, offset }
     }
 }
 
-impl<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize> StoreAdapter
-    for PagedAdapter<A, OFFSET, PAGES, PAGE_SIZE>
+impl<A, const PAGE_SIZE: usize> StoreAdapter for PagedAdapter<A, PAGE_SIZE>
 where
     A: StoreAdapter,
 {
@@ -29,11 +28,11 @@ where
     }
 
     fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
-        self.inner.read(addr + OFFSET, buf)
+        self.inner.read(addr + self.offset, buf)
     }
 
     fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
-        let addr = addr + OFFSET;
+        let addr = addr + self.offset;
         let page_offset = addr % PAGE_SIZE;
         if page_offset + data.len() <= PAGE_SIZE {
             return self.inner.write(addr, data);

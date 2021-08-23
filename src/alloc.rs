@@ -75,7 +75,7 @@ impl<const SLOTS: usize> Alloc<SLOTS> {
                 _ => None,
             }
         } else {
-            let slot = self.slots.iter_mut().max()?;
+            let slot = self.slots.iter_mut().filter(|s| s.size() >= size).max()?;
             let start = slot.start;
             slot.start += size;
             Some(start)

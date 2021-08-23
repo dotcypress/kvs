@@ -6,7 +6,6 @@ pub struct StoreOptions {
     magic: u32,
     nonce: u16,
     max_hops: usize,
-    overwrite: bool,
 }
 
 impl StoreOptions {
@@ -15,19 +14,12 @@ impl StoreOptions {
             magic,
             max_hops,
             nonce: 0,
-            overwrite: false,
         }
     }
 
     pub fn nonce(self, nonce: u16) -> Self {
         let mut res = self;
         res.nonce = nonce;
-        res
-    }
-
-    pub fn overwrite(self, overwrite: bool) -> Self {
-        let mut res = self;
-        res.overwrite = overwrite;
         res
     }
 }
@@ -86,7 +78,7 @@ where
         Ok(Self::new(adapter, opts))
     }
 
-    pub fn open(adapter: A, opts: StoreOptions) -> Result<Self, Error<E>> {
+    pub fn open(adapter: A, opts: StoreOptions, create_new: bool) -> Result<Self, Error<E>> {
         let mut adapter = adapter;
         match Self::load_header(&mut adapter, opts.magic, opts.nonce) {
             Ok(_) => {
@@ -96,12 +88,12 @@ where
                 }
                 Ok(store)
             }
-            Err(Error::StoreNotFound) if opts.overwrite => Self::create(adapter, opts),
+            Err(Error::StoreNotFound) if create_new => Self::create(adapter, opts),
             Err(err) => Err(err),
         }
     }
 
-    pub fn adapter_mut(&mut self) -> &mut A {
+    pub fn adapter(&mut self) -> &mut A {
         &mut self.adapter
     }
 
@@ -261,7 +253,7 @@ where
         Err(Error::KeyNotFound)
     }
 
-    fn load_bucket(&mut self, bucket_index: usize) -> Result<RawBucket, Error<E>> {
+    pub(crate) fn load_bucket(&mut self, bucket_index: usize) -> Result<RawBucket, Error<E>> {
         let offset = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket_index;
         let mut scratch = [0; size_of::<RawBucket>()];
         self.adapter
@@ -435,75 +427,5 @@ where
 
                 Ok(header)
             })
-    }
-}
-
-pub struct KeysIterator<'a, A, const BUCKETS: usize, const SLOTS: usize>
-where
-    A: StoreAdapter,
-{
-    store: &'a mut KVStore<A, BUCKETS, SLOTS>,
-    cursor: usize,
-}
-
-impl<'a, A, const BUCKETS: usize, const SLOTS: usize> KeysIterator<'a, A, BUCKETS, SLOTS>
-where
-    A: StoreAdapter,
-{
-    pub fn new(store: &'a mut KVStore<A, BUCKETS, SLOTS>) -> Self {
-        Self { store, cursor: 0 }
-    }
-}
-
-impl<'a, A, const BUCKETS: usize, const SLOTS: usize> Iterator
-    for KeysIterator<'a, A, BUCKETS, SLOTS>
-where
-    A: StoreAdapter,
-{
-    type Item = KeyReference;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.cursor >= BUCKETS {
-                return None;
-            }
-
-            let raw = self.store.load_bucket(self.cursor).unwrap_or_default();
-            let index = self.cursor;
-            self.cursor += 1;
-
-            if raw.in_use() {
-                let key_len = raw.key_len() as usize;
-                let bucket = Bucket { index, raw };
-
-                let mut key_ref = KeyReference::new(bucket.raw.address() as Address, key_len);
-                self.store
-                    .adapter
-                    .read(key_ref.address, &mut key_ref.scratch[..key_len])
-                    .ok();
-
-                return Some(key_ref);
-            }
-        }
-    }
-}
-
-pub struct KeyReference {
-    address: Address,
-    key_len: usize,
-    scratch: [u8; MAX_KEY_LEN],
-}
-
-impl KeyReference {
-    pub fn new(address: Address, key_len: usize) -> Self {
-        Self {
-            address,
-            key_len,
-            scratch: [0; MAX_KEY_LEN],
-        }
-    }
-
-    pub fn key(&self) -> &[u8] {
-        &self.scratch[..self.key_len]
     }
 }

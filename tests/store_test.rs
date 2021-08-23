@@ -48,7 +48,12 @@ mod tiny {
     }
 
     pub fn open_store(data: [u8; STORE_SIZE]) -> Store {
-        Store::open(MemoryAdapter::new(data), StoreOptions::new(MAGIC, MAX_HOPS)).unwrap()
+        Store::open(
+            MemoryAdapter::new(data),
+            StoreOptions::new(MAGIC, MAX_HOPS),
+            false,
+        )
+        .unwrap()
     }
 }
 
@@ -75,7 +80,11 @@ fn test_create_invalid_store() {
 fn test_reopen_store() {
     let adapter = tiny::create_store().close();
 
-    let store = tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS));
+    let store = tiny::Store::open(
+        adapter,
+        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        false,
+    );
     assert!(store.is_ok());
 }
 
@@ -83,7 +92,11 @@ fn test_reopen_store() {
 fn test_reopen_store_with_invalid_magic() {
     let adapter = tiny::create_store().close();
 
-    let store = tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC + 1, tiny::MAX_HOPS));
+    let store = tiny::Store::open(
+        adapter,
+        StoreOptions::new(tiny::MAGIC + 1, tiny::MAX_HOPS),
+        false,
+    );
     assert!(store.is_err());
     if let Err(err) = store {
         assert_eq!(err, kvs::Error::StoreNotFound);
@@ -97,6 +110,7 @@ fn test_reopen_store_with_invalid_nonce() {
     let store = tiny::Store::open(
         adapter,
         StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS).nonce(1),
+        false,
     );
     assert!(store.is_err());
     if let Err(err) = store {
@@ -111,7 +125,11 @@ fn test_reopen_store_with_invalid_buckets() {
     type WrongCapacityStore =
         KVStore<MemoryAdapter<{ tiny::STORE_SIZE }>, { tiny::BUCKETS * 2 }, { tiny::SLOTS }>;
 
-    let store = WrongCapacityStore::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS));
+    let store = WrongCapacityStore::open(
+        adapter,
+        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        false,
+    );
     assert!(store.is_err());
     if let Err(err) = store {
         assert_eq!(err, kvs::Error::InvalidCapacity);
@@ -183,8 +201,12 @@ fn test_reopen() {
     store.insert(b"foo", b"bar").unwrap();
 
     let adapter = store.close();
-    let mut store =
-        tiny::Store::open(adapter, StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS)).unwrap();
+    let mut store = tiny::Store::open(
+        adapter,
+        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        false,
+    )
+    .unwrap();
 
     let mut scratch = [0; 16];
     let bucket = store.load(b"foo", &mut scratch).unwrap();
