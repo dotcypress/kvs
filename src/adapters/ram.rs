@@ -15,7 +15,7 @@ impl<const SIZE: usize> MemoryAdapter<SIZE> {
         Self { memory }
     }
 
-    pub fn free(self) -> [u8; SIZE] {
+    pub fn release(self) -> [u8; SIZE] {
         self.memory
     }
 }
@@ -53,7 +53,7 @@ impl<'a> RefMemoryAdapter<'a> {
         Self { memory }
     }
 
-    pub fn free(self) -> &'a mut [u8] {
+    pub fn release(self) -> &'a mut [u8] {
         self.memory
     }
 }

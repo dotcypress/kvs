@@ -1,6 +1,6 @@
 use crate::Address;
 
-pub mod fram;
+pub mod spi;
 pub mod paged;
 pub mod ram;
 

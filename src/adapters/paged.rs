@@ -1,6 +1,6 @@
 use crate::adapters::*;
 
-pub struct PagedMemoryAdapter<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
+pub struct PagedAdapter<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
 where
     A: StoreAdapter,
 {
@@ -8,7 +8,7 @@ where
 }
 
 impl<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize>
-    PagedMemoryAdapter<A, OFFSET, PAGES, PAGE_SIZE>
+    PagedAdapter<A, OFFSET, PAGES, PAGE_SIZE>
 where
     A: StoreAdapter,
 {
@@ -18,7 +18,7 @@ where
 }
 
 impl<A, const OFFSET: usize, const PAGES: usize, const PAGE_SIZE: usize> StoreAdapter
-    for PagedMemoryAdapter<A, OFFSET, PAGES, PAGE_SIZE>
+    for PagedAdapter<A, OFFSET, PAGES, PAGE_SIZE>
 where
     A: StoreAdapter,
 {
