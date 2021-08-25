@@ -32,8 +32,8 @@ const SLOTS: usize = 1;
 type MemoryStore = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
 fn main() {
-    let opts = StoreOptions::new(0x4b1d, 32);
-    let mut store = MemoryStore::create(MemoryAdapter::default(), opts).unwrap();
+    let cfg = StoreConfig::new(0x4b1d, 32);
+    let mut store = MemoryStore::create(MemoryAdapter::default(), cfg).unwrap();
     for (idx, key) in KEYS.iter().enumerate() {
         store.insert(key.as_bytes(), &[idx as u8]).unwrap();
     }

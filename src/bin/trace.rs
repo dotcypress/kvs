@@ -2,6 +2,7 @@ extern crate kvs;
 
 use kvs::adapters::StoreAdapter;
 use kvs::*;
+use kvs::adapters::paged::PagedAdapter;
 
 #[derive(Debug)]
 struct TraceMemoryAdapter {
@@ -56,9 +57,9 @@ impl StoreAdapter for TraceMemoryAdapter {
 
 fn main() {
     const BUCKETS: usize = 256;
-    type TraceStore = KVStore<TraceMemoryAdapter, BUCKETS, 24>;
+    type TraceStore = KVStore<PagedAdapter<TraceMemoryAdapter, 16>, BUCKETS, 16>;
     let mut store =
-        TraceStore::create(TraceMemoryAdapter::new(), StoreOptions::new(0xf00d, 24)).unwrap();
+        TraceStore::create(PagedAdapter::new(TraceMemoryAdapter::new()), StoreConfig::new(0xf00d, 24)).unwrap();
     store
         .insert(b"foo", b"consectetur adipiscing elit")
         .unwrap();

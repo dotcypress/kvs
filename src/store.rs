@@ -2,13 +2,13 @@ use crate::adapters::*;
 use crate::*;
 use core::mem::size_of;
 
-pub struct StoreOptions {
+pub struct StoreConfig {
     magic: u32,
     nonce: u16,
     max_hops: usize,
 }
 
-impl StoreOptions {
+impl StoreConfig {
     pub fn new(magic: u32, max_hops: usize) -> Self {
         Self {
             magic,
@@ -29,7 +29,7 @@ where
     A: StoreAdapter,
 {
     adapter: A,
-    opts: StoreOptions,
+    cfg: StoreConfig,
     alloc: Option<Alloc<SLOTS>>,
 }
 
@@ -41,18 +41,18 @@ where
 {
     const DATA_START: Address = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * BUCKETS;
 
-    fn new(adapter: A, opts: StoreOptions) -> Self {
+    fn new(adapter: A, cfg: StoreConfig) -> Self {
         Self {
             alloc: None,
             adapter,
-            opts,
+            cfg,
         }
     }
 
-    pub fn create(adapter: A, opts: StoreOptions) -> Result<Self, Error<E>> {
+    pub fn create(adapter: A, cfg: StoreConfig) -> Result<Self, Error<E>> {
         let header = RawStoreHeader::new()
-            .with_magic(opts.magic)
-            .with_nonce(opts.nonce)
+            .with_magic(cfg.magic)
+            .with_nonce(cfg.nonce)
             .with_buckets(BUCKETS as u16);
 
         let mut adapter = adapter;
@@ -75,19 +75,13 @@ where
             .write(0, &header.into_bytes())
             .map_err(Error::AdapterError)?;
 
-        Ok(Self::new(adapter, opts))
+        Ok(Self::new(adapter, cfg))
     }
 
-    pub fn open(adapter: A, opts: StoreOptions, create_new: bool) -> Result<Self, Error<E>> {
+    pub fn open(adapter: A, opts: StoreConfig, create_new: bool) -> Result<Self, Error<E>> {
         let mut adapter = adapter;
         match Self::load_header(&mut adapter, opts.magic, opts.nonce) {
-            Ok(_) => {
-                let mut store = Self::new(adapter, opts);
-                if SLOTS > 0 {
-                    store.load_index()?;
-                }
-                Ok(store)
-            }
+            Ok(_) => Ok(Self::new(adapter, opts)),
             Err(Error::StoreNotFound) if create_new => Self::create(adapter, opts),
             Err(err) => Err(err),
         }
@@ -231,7 +225,7 @@ where
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
         let hopper: Grasshopper<BUCKETS> =
-            Grasshopper::new(self.opts.max_hops, self.opts.nonce, &key);
+            Grasshopper::new(self.cfg.max_hops, self.cfg.nonce, &key);
         let hash = hopper.hash();
 
         for index in hopper {
@@ -273,7 +267,7 @@ where
             key_len <= MAX_KEY_LEN && !key.is_empty() && val_len <= MAX_VALUE_LEN && val_len > 0
         );
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, self.opts.nonce, &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, self.cfg.nonce, &key);
         let hash = hopper.hash();
         let mut free_bucket: Option<Bucket> = None;
 

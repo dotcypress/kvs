@@ -31,6 +31,35 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> Debug for Error<SPI
 }
 
 #[derive(Debug)]
+pub struct SpiAdapterConfig {
+    async_write: bool,
+    offset: Address,
+    max_addr: Address,
+}
+
+impl SpiAdapterConfig {
+    pub fn new(max_addr: Address) -> Self {
+        Self {
+            max_addr,
+            offset: 0,
+            async_write: false,
+        }
+    }
+
+    pub fn async_write(self, async_write: bool) -> Self {
+        let mut res = self;
+        res.async_write = async_write;
+        res
+    }
+
+    pub fn offset(self, offset: Address) -> Self {
+        let mut res = self;
+        res.offset = offset;
+        res
+    }
+}
+
+#[derive(Debug)]
 pub struct SpiStoreAdapter<
     SPI: spi::Transfer<u8> + spi::Write<u8>,
     CS: OutputPin,
@@ -38,20 +67,14 @@ pub struct SpiStoreAdapter<
 > {
     spi: SPI,
     cs: CS,
-    max_addr: Address,
-    min_addr: Address,
+    cfg: SpiAdapterConfig,
 }
 
 impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: usize>
     SpiStoreAdapter<SPI, CS, ADDR_BYTES>
 {
-    pub fn new(spi: SPI, cs: CS, min_addr: Address, max_addr: Address) -> Self {
-        Self {
-            spi,
-            cs,
-            max_addr,
-            min_addr,
-        }
+    pub fn new(spi: SPI, cs: CS, cfg: SpiAdapterConfig) -> Self {
+        Self { spi, cs, cfg }
     }
 
     pub fn release(self) -> (SPI, CS) {
@@ -105,8 +128,8 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: u
     type Error = Error<SPI, CS>;
 
     fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
-        let addr = addr + self.min_addr;
-        assert!(!buf.is_empty() && addr + buf.len() < self.max_addr);
+        let addr = addr + self.cfg.offset;
+        assert!(!buf.is_empty() && addr + buf.len() < self.cfg.max_addr);
 
         self.transaction(|spi| {
             let mut cmd_buf = Self::mem_cmd(Command::Read, addr);
@@ -119,8 +142,8 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: u
     }
 
     fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
-        let addr = addr + self.min_addr;
-        assert!(!data.is_empty() && addr + data.len() < self.max_addr);
+        let addr = addr + self.cfg.offset;
+        assert!(!data.is_empty() && addr + data.len() < self.cfg.max_addr);
 
         self.transaction(|spi| {
             spi.write(&[Command::WriteEnable as u8])
@@ -132,10 +155,17 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: u
             spi.write(&mut cmd_buf[..ADDR_BYTES + 1])
                 .and_then(|_| spi.write(&data))
                 .map_err(Error::WriteError)
-        })
+        })?;
+
+        if self.cfg.async_write {
+            return Ok(());
+        }
+
+        while self.read_status_register()? & 0x1 == 0x1 {}
+        Ok(())
     }
 
     fn max_address(&self) -> Address {
-        self.max_addr
+        self.cfg.max_addr
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use kvs::adapters::ram::*;
-use kvs::{Grasshopper, KVStore, StoreOptions};
+use kvs::{Grasshopper, KVStore, StoreConfig};
 
 const KEY_COLLISION_HASH: u16 = 50952;
 
@@ -44,13 +44,13 @@ mod tiny {
     pub type Store = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
     pub fn create_store() -> Store {
-        Store::create(MemoryAdapter::default(), StoreOptions::new(MAGIC, MAX_HOPS)).unwrap()
+        Store::create(MemoryAdapter::default(), StoreConfig::new(MAGIC, MAX_HOPS)).unwrap()
     }
 
     pub fn open_store(data: [u8; STORE_SIZE]) -> Store {
         Store::open(
             MemoryAdapter::new(data),
-            StoreOptions::new(MAGIC, MAX_HOPS),
+            StoreConfig::new(MAGIC, MAX_HOPS),
             false,
         )
         .unwrap()
@@ -68,7 +68,7 @@ fn test_create_invalid_store() {
 
     let store = TooSmallStore::create(
         MemoryAdapter::default(),
-        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS),
     );
     assert!(store.is_err());
     if let Err(err) = store {
@@ -82,7 +82,7 @@ fn test_reopen_store() {
 
     let store = tiny::Store::open(
         adapter,
-        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS),
         false,
     );
     assert!(store.is_ok());
@@ -94,7 +94,7 @@ fn test_reopen_store_with_invalid_magic() {
 
     let store = tiny::Store::open(
         adapter,
-        StoreOptions::new(tiny::MAGIC + 1, tiny::MAX_HOPS),
+        StoreConfig::new(tiny::MAGIC + 1, tiny::MAX_HOPS),
         false,
     );
     assert!(store.is_err());
@@ -109,7 +109,7 @@ fn test_reopen_store_with_invalid_nonce() {
 
     let store = tiny::Store::open(
         adapter,
-        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS).nonce(1),
+        StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS).nonce(1),
         false,
     );
     assert!(store.is_err());
@@ -127,7 +127,7 @@ fn test_reopen_store_with_invalid_buckets() {
 
     let store = WrongCapacityStore::open(
         adapter,
-        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS),
         false,
     );
     assert!(store.is_err());
@@ -203,7 +203,7 @@ fn test_reopen() {
     let adapter = store.close();
     let mut store = tiny::Store::open(
         adapter,
-        StoreOptions::new(tiny::MAGIC, tiny::MAX_HOPS),
+        StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS),
         false,
     )
     .unwrap();

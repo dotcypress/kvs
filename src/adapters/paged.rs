@@ -5,15 +5,14 @@ where
     A: StoreAdapter,
 {
     inner: A,
-    offset: usize,
 }
 
 impl<A, const PAGE_SIZE: usize> PagedAdapter<A, PAGE_SIZE>
 where
     A: StoreAdapter,
 {
-    pub fn new(inner: A, offset: usize) -> Self {
-        Self { inner, offset }
+    pub fn new(inner: A) -> Self {
+        Self { inner }
     }
 }
 
@@ -28,11 +27,10 @@ where
     }
 
     fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
-        self.inner.read(addr + self.offset, buf)
+        self.inner.read(addr, buf)
     }
 
     fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
-        let addr = addr + self.offset;
         let page_offset = addr % PAGE_SIZE;
         if page_offset + data.len() <= PAGE_SIZE {
             return self.inner.write(addr, data);
