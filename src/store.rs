@@ -30,7 +30,7 @@ where
 {
     adapter: A,
     opts: StoreOptions,
-    alloc: Alloc<SLOTS>,
+    alloc: Option<Alloc<SLOTS>>,
 }
 
 pub type ReadOnlyKVStore<A, const BUCKETS: usize> = KVStore<A, BUCKETS, 0>;
@@ -43,9 +43,9 @@ where
 
     fn new(adapter: A, opts: StoreOptions) -> Self {
         Self {
-            alloc: Alloc::<SLOTS>::new(Self::DATA_START, adapter.max_address() - Self::DATA_START),
-            opts,
+            alloc: None,
             adapter,
+            opts,
         }
     }
 
@@ -193,7 +193,8 @@ where
                     .write(addr, &RawBucket::new().into_bytes())
                     .map_err(Error::AdapterError)?;
                 if SLOTS > 0 {
-                    self.alloc.free(bucket.address(), bucket.record_len());
+                    self.allocator()?
+                        .free(bucket.address(), bucket.record_len());
                 }
                 Ok(())
             }
@@ -212,7 +213,8 @@ where
                     .write(addr, &RawBucket::new().into_bytes())
                     .map_err(Error::AdapterError)?;
                 if SLOTS > 0 {
-                    self.alloc.free(bucket.address(), bucket.record_len());
+                    self.allocator()?
+                        .free(bucket.address(), bucket.record_len());
                 }
                 Ok(())
             }
@@ -291,7 +293,8 @@ where
                 }
 
                 let bucket = Bucket { index, raw };
-                self.alloc.free(bucket.address(), bucket.record_len());
+                self.allocator()?
+                    .free(bucket.address(), bucket.record_len());
                 free_bucket = Some(bucket);
                 break;
             } else {
@@ -304,7 +307,7 @@ where
         }
 
         let mut bucket = free_bucket.ok_or(Error::IndexOverflow)?;
-        let addr = match self.alloc.alloc(key_len + val_len, None) {
+        let addr = match self.allocator()?.alloc(key_len + val_len, None) {
             Some(addr) => addr,
             None => return Err(Error::StoreOverflow),
         };
@@ -350,7 +353,7 @@ where
         let mut bucket = bucket;
 
         if new_val_len > bucket.val_len() {
-            self.alloc
+            self.allocator()?
                 .alloc(
                     new_val_len - bucket.val_len(),
                     Some(bucket.address() + bucket.record_len()),
@@ -372,11 +375,22 @@ where
         Ok(bucket)
     }
 
-    fn load_index(&mut self) -> Result<(), Error<E>> {
+    fn allocator(&mut self) -> Result<&mut alloc::Alloc<SLOTS>, Error<E>> {
+        if self.alloc.is_none() {
+            self.alloc = Some(self.load_index()?);
+        }
+        Ok(self.alloc.as_mut().unwrap())
+    }
+
+    fn load_index(&mut self) -> Result<alloc::Alloc<SLOTS>, Error<E>> {
         const BUCKET_SIZE: usize = size_of::<RawBucket>();
         let mut buf = [0; BUCKET_SIZE * BUCKET_BATCH_SIZE];
         let mut offset = size_of::<RawStoreHeader>();
         let mut buckets = BUCKETS;
+        let mut alloc = Alloc::<SLOTS>::new(
+            Self::DATA_START,
+            self.adapter.max_address() - Self::DATA_START,
+        );
 
         while buckets > 0 {
             let batch = usize::min(buckets, BUCKET_BATCH_SIZE);
@@ -395,15 +409,13 @@ where
                 }
                 let addr = raw.address() as Address;
                 let size = raw.key_len() as usize + raw.val_len() as usize;
-                self.alloc
-                    .alloc(size, Some(addr))
-                    .ok_or(Error::StoreOverflow)?;
+                alloc.alloc(size, Some(addr)).ok_or(Error::StoreOverflow)?;
             }
             offset += chunk;
             buckets -= batch;
         }
 
-        Ok(())
+        Ok(alloc)
     }
 
     fn load_header(adapter: &mut A, magic: u32, nonce: u16) -> Result<RawStoreHeader, Error<E>> {
