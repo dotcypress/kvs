@@ -331,6 +331,18 @@ fn test_patch_resize() {
 }
 
 #[test]
+fn test_reset() {
+    let mut store = tiny::create_store();
+
+    store.insert(b"foo", b"bar").unwrap();
+    store.reset().unwrap();
+
+    let mut scratch = [0; 16];
+    let err = store.load(b"foo", &mut scratch).unwrap_err();
+    assert_eq!(err, kvs::Error::KeyNotFound);
+}
+
+#[test]
 fn test_remove() {
     let mut store = tiny::create_store();
 

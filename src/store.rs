@@ -41,14 +41,6 @@ where
 {
     const DATA_START: Address = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * BUCKETS;
 
-    fn new(adapter: A, cfg: StoreConfig) -> Self {
-        Self {
-            alloc: None,
-            adapter,
-            cfg,
-        }
-    }
-
     pub fn create(adapter: A, cfg: StoreConfig) -> Result<Self, Error<E>> {
         let header = RawStoreHeader::new()
             .with_magic(cfg.magic)
@@ -75,14 +67,24 @@ where
             .write(0, &header.into_bytes())
             .map_err(Error::AdapterError)?;
 
-        Ok(Self::new(adapter, cfg))
+        let mut res = Self {
+            alloc: None,
+            adapter,
+            cfg,
+        };
+        res.reset()?;
+        Ok(res)
     }
 
-    pub fn open(adapter: A, opts: StoreConfig, create_new: bool) -> Result<Self, Error<E>> {
+    pub fn open(adapter: A, cfg: StoreConfig, create_new: bool) -> Result<Self, Error<E>> {
         let mut adapter = adapter;
-        match Self::load_header(&mut adapter, opts.magic, opts.nonce) {
-            Ok(_) => Ok(Self::new(adapter, opts)),
-            Err(Error::StoreNotFound) if create_new => Self::create(adapter, opts),
+        match Self::load_header(&mut adapter, cfg.magic, cfg.nonce) {
+            Ok(_) => Ok(Self {
+                alloc: None,
+                adapter,
+                cfg,
+            }),
+            Err(Error::StoreNotFound) if create_new => Self::create(adapter, cfg),
             Err(err) => Err(err),
         }
     }
@@ -93,6 +95,33 @@ where
 
     pub fn close(self) -> A {
         self.adapter
+    }
+
+    pub fn reset(&mut self) -> Result<(), Error<E>> {
+        let header = RawStoreHeader::new()
+            .with_magic(self.cfg.magic)
+            .with_nonce(self.cfg.nonce)
+            .with_buckets(BUCKETS as u16);
+
+        let zeroes = [0; size_of::<RawBucket>() * BUCKET_BATCH_SIZE];
+        let mut offset = size_of::<RawStoreHeader>();
+        let mut buckets = BUCKETS;
+        while buckets > 0 {
+            let batch = usize::min(buckets, BUCKET_BATCH_SIZE);
+            buckets -= batch;
+
+            let chunk = batch * size_of::<RawBucket>();
+            self.adapter
+                .write(offset, &zeroes[..chunk])
+                .map_err(Error::AdapterError)?;
+            offset += chunk;
+        }
+
+        self.adapter
+            .write(0, &header.into_bytes())
+            .map_err(Error::AdapterError)?;
+
+        Ok(())
     }
 
     pub fn alloc(
@@ -187,7 +216,7 @@ where
                     .write(addr, &RawBucket::new().into_bytes())
                     .map_err(Error::AdapterError)?;
                 if SLOTS > 0 {
-                    self.allocator()?
+                    self.get_alloc()?
                         .free(bucket.address(), bucket.record_len());
                 }
                 Ok(())
@@ -207,7 +236,7 @@ where
                     .write(addr, &RawBucket::new().into_bytes())
                     .map_err(Error::AdapterError)?;
                 if SLOTS > 0 {
-                    self.allocator()?
+                    self.get_alloc()?
                         .free(bucket.address(), bucket.record_len());
                 }
                 Ok(())
@@ -287,7 +316,7 @@ where
                 }
 
                 let bucket = Bucket { index, raw };
-                self.allocator()?
+                self.get_alloc()?
                     .free(bucket.address(), bucket.record_len());
                 free_bucket = Some(bucket);
                 break;
@@ -301,7 +330,7 @@ where
         }
 
         let mut bucket = free_bucket.ok_or(Error::IndexOverflow)?;
-        let addr = match self.allocator()?.alloc(key_len + val_len, None) {
+        let addr = match self.get_alloc()?.alloc(key_len + val_len, None) {
             Some(addr) => addr,
             None => return Err(Error::StoreOverflow),
         };
@@ -347,7 +376,7 @@ where
         let mut bucket = bucket;
 
         if new_val_len > bucket.val_len() {
-            self.allocator()?
+            self.get_alloc()?
                 .alloc(
                     new_val_len - bucket.val_len(),
                     Some(bucket.address() + bucket.record_len()),
@@ -369,7 +398,7 @@ where
         Ok(bucket)
     }
 
-    fn allocator(&mut self) -> Result<&mut alloc::Alloc<SLOTS>, Error<E>> {
+    fn get_alloc(&mut self) -> Result<&mut alloc::Alloc<SLOTS>, Error<E>> {
         if self.alloc.is_none() {
             self.alloc = Some(self.load_index()?);
         }

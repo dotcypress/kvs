@@ -5,6 +5,7 @@ use embedded_hal::blocking::spi;
 use embedded_hal::digital::v2::OutputPin;
 
 use crate::adapters::*;
+
 pub enum Command {
     WriteStatusRegister = 0x01,
     Write = 0x02,
@@ -151,8 +152,8 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: u
         })?;
 
         self.transaction(|spi| {
-            let mut cmd_buf = Self::mem_cmd(Command::Write, addr);
-            spi.write(&mut cmd_buf[..ADDR_BYTES + 1])
+            let cmd_buf = Self::mem_cmd(Command::Write, addr);
+            spi.write(&cmd_buf[..ADDR_BYTES + 1])
                 .and_then(|_| spi.write(&data))
                 .map_err(Error::WriteError)
         })?;
