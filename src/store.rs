@@ -39,34 +39,9 @@ impl<E, A, const BUCKETS: usize, const SLOTS: usize> KVStore<A, BUCKETS, SLOTS>
 where
     A: StoreAdapter<Error = E>,
 {
-    const DATA_START: Address = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * BUCKETS;
+    const DATA_START: Address = size_of::<StoreHeader>() + size_of::<RawBucket>() * BUCKETS;
 
     pub fn create(adapter: A, cfg: StoreConfig) -> Result<Self, Error<E>> {
-        let header = RawStoreHeader::new()
-            .with_magic(cfg.magic)
-            .with_nonce(cfg.nonce)
-            .with_buckets(BUCKETS as u16);
-
-        let mut adapter = adapter;
-
-        let zeroes = [0; size_of::<RawBucket>() * BUCKET_BATCH_SIZE];
-        let mut offset = size_of::<RawStoreHeader>();
-        let mut buckets = BUCKETS;
-        while buckets > 0 {
-            let batch = usize::min(buckets, BUCKET_BATCH_SIZE);
-            buckets -= batch;
-
-            let chunk = batch * size_of::<RawBucket>();
-            adapter
-                .write(offset, &zeroes[..chunk])
-                .map_err(Error::AdapterError)?;
-            offset += chunk;
-        }
-
-        adapter
-            .write(0, &header.into_bytes())
-            .map_err(Error::AdapterError)?;
-
         let mut res = Self {
             alloc: None,
             adapter,
@@ -98,16 +73,13 @@ where
     }
 
     pub fn reset(&mut self) -> Result<(), Error<E>> {
-        let header = RawStoreHeader::new()
-            .with_magic(self.cfg.magic)
-            .with_nonce(self.cfg.nonce)
-            .with_buckets(BUCKETS as u16);
+        const ERASE_BATCH_SIZE: usize = 32;
 
-        let zeroes = [0; size_of::<RawBucket>() * BUCKET_BATCH_SIZE];
-        let mut offset = size_of::<RawStoreHeader>();
+        let zeroes = [0; size_of::<RawBucket>() * ERASE_BATCH_SIZE];
+        let mut offset = size_of::<StoreHeader>();
         let mut buckets = BUCKETS;
         while buckets > 0 {
-            let batch = usize::min(buckets, BUCKET_BATCH_SIZE);
+            let batch = usize::min(buckets, ERASE_BATCH_SIZE);
             buckets -= batch;
 
             let chunk = batch * size_of::<RawBucket>();
@@ -116,6 +88,11 @@ where
                 .map_err(Error::AdapterError)?;
             offset += chunk;
         }
+
+        let header = StoreHeader::new()
+            .with_magic(self.cfg.magic)
+            .with_nonce(self.cfg.nonce)
+            .with_buckets(BUCKETS as u16);
 
         self.adapter
             .write(0, &header.into_bytes())
@@ -211,7 +188,7 @@ where
         match self.lookup(key) {
             Ok(bucket) => {
                 self.erase_bucket_content(&bucket, fill_with)?;
-                let addr = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index();
+                let addr = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket.index();
                 self.adapter
                     .write(addr, &RawBucket::new().into_bytes())
                     .map_err(Error::AdapterError)?;
@@ -231,7 +208,7 @@ where
 
         match self.lookup(key) {
             Ok(bucket) => {
-                let addr = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index();
+                let addr = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket.index();
                 self.adapter
                     .write(addr, &RawBucket::new().into_bytes())
                     .map_err(Error::AdapterError)?;
@@ -279,7 +256,7 @@ where
     }
 
     pub(crate) fn load_bucket(&mut self, bucket_index: usize) -> Result<RawBucket, Error<E>> {
-        let offset = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket_index;
+        let offset = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket_index;
         let mut scratch = [0; size_of::<RawBucket>()];
         self.adapter
             .read(offset, &mut scratch)
@@ -341,7 +318,7 @@ where
 
         self.adapter
             .write(
-                size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index(),
+                size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket.index(),
                 &bucket.raw.clone().into_bytes(),
             )
             .map_err(Error::AdapterError)?;
@@ -384,7 +361,7 @@ where
                 .ok_or(Error::ValueOverflow)?;
             bucket.raw.set_val_len(new_val_len as u16);
 
-            let addr = size_of::<RawStoreHeader>() + size_of::<RawBucket>() * bucket.index();
+            let addr = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket.index();
             self.adapter
                 .write(addr, &bucket.raw.clone().into_bytes())
                 .map_err(Error::AdapterError)?;
@@ -406,9 +383,11 @@ where
     }
 
     fn load_index(&mut self) -> Result<alloc::Alloc<SLOTS>, Error<E>> {
+        const BUCKET_BATCH_SIZE: usize = 32;
         const BUCKET_SIZE: usize = size_of::<RawBucket>();
+
         let mut buf = [0; BUCKET_SIZE * BUCKET_BATCH_SIZE];
-        let mut offset = size_of::<RawStoreHeader>();
+        let mut offset = size_of::<StoreHeader>();
         let mut buckets = BUCKETS;
         let mut alloc = Alloc::<SLOTS>::new(
             Self::DATA_START,
@@ -441,12 +420,12 @@ where
         Ok(alloc)
     }
 
-    fn load_header(adapter: &mut A, magic: u32, nonce: u16) -> Result<RawStoreHeader, Error<E>> {
-        let mut buf = [0; size_of::<RawStoreHeader>()];
+    fn load_header(adapter: &mut A, magic: u32, nonce: u16) -> Result<StoreHeader, Error<E>> {
+        let mut buf = [0; size_of::<StoreHeader>()];
         adapter
             .read(0, &mut buf)
             .map_err(Error::AdapterError)
-            .map(|_| RawStoreHeader::from_bytes(buf))
+            .map(|_| StoreHeader::from_bytes(buf))
             .and_then(|header| {
                 if header.magic() != magic {
                     return Err(Error::StoreNotFound);

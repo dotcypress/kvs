@@ -16,8 +16,6 @@ pub use store::*;
 pub const MAX_KEY_LEN: usize = 128;
 pub const MAX_VALUE_LEN: usize = 32 * 1024;
 
-const BUCKET_BATCH_SIZE: usize = 32;
-
 pub type Address = usize;
 
 #[derive(Debug)]
@@ -63,7 +61,7 @@ pub enum Error<E> {
 }
 
 #[bitfield]
-pub(crate) struct RawStoreHeader {
+pub(crate) struct StoreHeader {
     magic: B32,
     nonce: B16,
     buckets: B16,
@@ -117,37 +115,31 @@ where
                 let key_len = raw.key_len() as usize;
                 let val_len = raw.val_len() as usize;
                 let bucket = Bucket { index, raw };
+                let address = bucket.raw.address() as Address;
+                let mut scratch = [0; MAX_KEY_LEN];
 
-                let mut key_ref =
-                    KeyReference::new(bucket.raw.address() as Address, key_len, val_len);
                 self.store
                     .adapter()
-                    .read(key_ref.address, &mut key_ref.scratch[..key_len])
+                    .read(address, &mut scratch[..key_len])
                     .ok();
 
-                return Some(key_ref);
+                return Some(KeyReference {
+                    key_len,
+                    val_len,
+                    scratch,
+                });
             }
         }
     }
 }
 
 pub struct KeyReference {
-    address: Address,
     key_len: usize,
     val_len: usize,
     scratch: [u8; MAX_KEY_LEN],
 }
 
 impl KeyReference {
-    pub fn new(address: Address, key_len: usize, val_len: usize) -> Self {
-        Self {
-            address,
-            key_len,
-            val_len,
-            scratch: [0; MAX_KEY_LEN],
-        }
-    }
-
     pub fn key(&self) -> &[u8] {
         &self.scratch[..self.key_len]
     }
