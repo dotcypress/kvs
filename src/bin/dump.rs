@@ -4,38 +4,36 @@ use kvs::adapters::ram::MemoryAdapter;
 use kvs::*;
 use std::io::*;
 
-const KEYS: [&str; 18] = [
-    "key_29589",
-    "key_34447",
-    "key_42952",
-    "key_45273",
-    "key_69027",
-    "key_93956",
-    "key_126220",
-    "key_153367",
-    "key_155294",
-    "key_176347",
-    "key_187034",
-    "key_217113",
-    "key_218347",
-    "key_221505",
-    "key_227523",
-    "key_231448",
-    "foo",
-    "bar",
+const KEYS: [&str; 16] = [
+    "/bin/charlotte/big/great/year.jpg",
+    "/bin/group/place/public.txt",
+    "/bin/oliver/fact/year/place.txt",
+    "/etc/able/woman/mia.mp4",
+    "/etc/big/week.jpg",
+    "/home/able/year.rar",
+    "/home/early/group.jpg",
+    "/isabella/time.mp4",
+    "/sbin/young/eye/problem.xls",
+    "/thing/charlotte.flv",
+    "/tmp/amelia/emma/good.tar",
+    "/usr/elijah/right.tar",
+    "/usr/emma.rar",
+    "/usr/olivia/different.jpg",
+    "/var/aria/high.zip",
+    "/var/life/time/oliver.tar",
 ];
 
-const STORE_SIZE: usize = 512;
-const BUCKETS: usize = 24;
+const STORE_SIZE: usize = 1024;
+const BUCKETS: usize = 32;
 const SLOTS: usize = 1;
 
 type MemoryStore = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
 fn main() {
-    let cfg = StoreConfig::new(0x4b1d, 32);
+    let cfg = StoreConfig::new(0x796e6974, 32).nonce(34);
     let mut store = MemoryStore::create(MemoryAdapter::default(), cfg).unwrap();
-    for (idx, key) in KEYS.iter().enumerate() {
-        store.insert(key.as_bytes(), &[idx as u8]).unwrap();
+    for key in KEYS.iter() {
+        store.insert(key.as_bytes(), key.as_bytes()).unwrap();
     }
 
     stdout().write_all(&store.close().memory).ok();

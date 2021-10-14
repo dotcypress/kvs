@@ -31,6 +31,7 @@ where
     adapter: A,
     cfg: StoreConfig,
     alloc: Option<Alloc<SLOTS>>,
+    scratch: [u8; MAX_KEY_LEN],
 }
 
 pub type ReadOnlyKVStore<A, const BUCKETS: usize> = KVStore<A, BUCKETS, 0>;
@@ -44,6 +45,7 @@ where
     pub fn create(adapter: A, cfg: StoreConfig) -> Result<Self, Error<E>> {
         let mut res = Self {
             alloc: None,
+            scratch: [0; MAX_KEY_LEN],
             adapter,
             cfg,
         };
@@ -56,6 +58,7 @@ where
         match Self::load_header(&mut adapter, cfg.magic, cfg.nonce) {
             Ok(_) => Ok(Self {
                 alloc: None,
+                scratch: [0; MAX_KEY_LEN],
                 adapter,
                 cfg,
             }),
@@ -178,7 +181,10 @@ where
 
         let bucket = self.lookup(key)?;
         let addr = bucket.address() + bucket.key_len() + offset;
-        self.adapter.read(addr, buf).map_err(Error::AdapterError)?;
+        let size = usize::min(buf.len(), self.adapter.max_address() - addr);
+        self.adapter
+            .read(addr, &mut buf[..size])
+            .map_err(Error::AdapterError)?;
         Ok(bucket)
     }
 
@@ -230,22 +236,20 @@ where
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
-        let hopper: Grasshopper<BUCKETS> =
-            Grasshopper::new(self.cfg.max_hops, self.cfg.nonce, &key);
+        let hopper = Grasshopper::<BUCKETS>::new(self.cfg.max_hops, self.cfg.nonce, &key);
         let hash = hopper.hash();
 
         for index in hopper {
             let raw = self.load_bucket(index)?;
-            if !raw.in_use() || raw.hash() != hash || raw.key_len() as usize != key.len() {
+            if raw.hash() != hash || raw.key_len() as usize != key.len() {
                 continue;
             }
 
-            let mut scratch = [0; MAX_KEY_LEN];
             self.adapter
-                .read(raw.address() as Address, &mut scratch[..key.len()])
+                .read(raw.address() as Address, &mut self.scratch[..key.len()])
                 .map_err(Error::AdapterError)?;
 
-            if key != &scratch[..key.len()] {
+            if key != &self.scratch[..key.len()] {
                 continue;
             }
 
@@ -279,16 +283,15 @@ where
 
         for index in hopper {
             let mut raw = self.load_bucket(index)?;
-            if raw.in_use() {
-                if raw.hash() != hash || raw.key_len() as usize != key.len() {
+            if raw.key_len() > 0 {
+                if raw.hash() != hash || raw.key_len() as usize != key_len {
                     continue;
                 }
 
-                let mut scratch = [0; MAX_KEY_LEN];
                 self.adapter
-                    .read(raw.address() as Address, &mut scratch[..key.len()])
+                    .read(raw.address() as Address, &mut self.scratch[..key_len])
                     .map_err(Error::AdapterError)?;
-                if key != &scratch[..key.len()] {
+                if key != &self.scratch[..key_len] {
                     continue;
                 }
 
@@ -312,7 +315,7 @@ where
             None => return Err(Error::StoreOverflow),
         };
 
-        bucket.raw.set_in_use(true);
+        bucket.raw.set_key_len(key_len as u8);
         bucket.raw.set_address(addr as u32);
         bucket.raw.set_val_len(val_len as u16);
 
@@ -406,7 +409,7 @@ where
                 scratch.copy_from_slice(&buf[bucket_idx * BUCKET_SIZE..][..BUCKET_SIZE]);
 
                 let raw = RawBucket::from_bytes(scratch);
-                if !raw.in_use() {
+                if raw.key_len() == 0 {
                     continue;
                 }
                 let addr = raw.address() as Address;

@@ -3,25 +3,25 @@ use std::collections::HashSet;
 use kvs::adapters::ram::*;
 use kvs::{Grasshopper, KVStore, StoreConfig};
 
-const KEY_COLLISION_HASH: u16 = 50952;
+const KEY_COLLISION_HASH: u16 = 58263;
 
 const KEY_COLLISIONS: [&str; 16] = [
-    "key_29589",
-    "key_34447",
-    "key_42952",
-    "key_45273",
-    "key_69027",
-    "key_93956",
-    "key_126220",
-    "key_153367",
-    "key_155294",
-    "key_176347",
-    "key_187034",
-    "key_217113",
-    "key_218347",
-    "key_221505",
-    "key_227523",
-    "key_231448",
+    "/bin/charlotte/big/great/year.jpg",
+    "/bin/group/place/public.txt",
+    "/bin/oliver/fact/year/place.txt",
+    "/etc/able/woman/mia.mp4",
+    "/etc/big/week.jpg",
+    "/home/able/year.rar",
+    "/home/early/group.jpg",
+    "/isabella/time.mp4",
+    "/sbin/young/eye/problem.xls",
+    "/thing/charlotte.flv",
+    "/tmp/amelia/emma/good.tar",
+    "/usr/elijah/right.tar",
+    "/usr/emma.rar",
+    "/usr/olivia/different.jpg",
+    "/var/aria/high.zip",
+    "/var/life/time/oliver.tar",
 ];
 
 #[test]
@@ -35,9 +35,9 @@ fn test_collisions() {
 mod tiny {
     use crate::*;
 
-    pub const MAGIC: u32 = 0x4b1d;
-    pub const STORE_SIZE: usize = 512;
-    pub const BUCKETS: usize = 24;
+    pub const MAGIC: u32 = 0x796e6974;
+    pub const STORE_SIZE: usize = 1024;
+    pub const BUCKETS: usize = 32;
     pub const SLOTS: usize = 8;
     pub const MAX_HOPS: usize = 32;
 
@@ -45,15 +45,6 @@ mod tiny {
 
     pub fn create_store() -> Store {
         Store::create(MemoryAdapter::default(), StoreConfig::new(MAGIC, MAX_HOPS)).unwrap()
-    }
-
-    pub fn open_store(data: [u8; STORE_SIZE]) -> Store {
-        Store::open(
-            MemoryAdapter::new(data),
-            StoreConfig::new(MAGIC, MAX_HOPS),
-            false,
-        )
-        .unwrap()
     }
 }
 
@@ -438,12 +429,18 @@ fn test_hash_collisions() {
 #[test]
 fn test_compatibility() {
     let data = include_bytes!("./tiny.db");
-    let mut store = tiny::open_store(*data);
 
-    let mut scratch = [0; 16];
-    for (idx, key) in KEY_COLLISIONS.iter().enumerate() {
+    let mut store = tiny::Store::open(
+        MemoryAdapter::new(*data),
+        StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS).nonce(34),
+        false,
+    )
+    .unwrap();
+
+    let mut scratch = [0; 64];
+    for key in KEY_COLLISIONS.iter() {
         let bucket = store.load(key.as_bytes(), &mut scratch).unwrap();
-        assert_eq!(bucket.val_len(), 1);
-        assert_eq!(&scratch[..bucket.val_len()], &[idx as u8]);
+        assert_eq!(bucket.val_len(), key.len());
+        assert_eq!(&scratch[..bucket.val_len()], key.as_bytes());
     }
 }

@@ -13,8 +13,8 @@ pub use alloc::*;
 pub use grasshopper::*;
 pub use store::*;
 
-pub const MAX_KEY_LEN: usize = 128;
-pub const MAX_VALUE_LEN: usize = 32 * 1024;
+pub const MAX_KEY_LEN: usize = 256;
+pub const MAX_VALUE_LEN: usize = 64 * 1024;
 
 pub type Address = usize;
 
@@ -70,8 +70,7 @@ pub(crate) struct StoreHeader {
 #[bitfield]
 #[derive(Default, Debug, Clone)]
 pub(crate) struct RawBucket {
-    in_use: bool,
-    val_len: B15,
+    val_len: B16,
     key_len: B8,
     address: B24,
     hash: B16,
@@ -111,8 +110,8 @@ where
             let index = self.cursor;
             self.cursor += 1;
 
-            if raw.in_use() {
-                let key_len = raw.key_len() as usize;
+            let key_len = raw.key_len() as usize;
+            if key_len > 0 {
                 let val_len = raw.val_len() as usize;
                 let bucket = Bucket { index, raw };
                 let address = bucket.raw.address() as Address;

@@ -5,7 +5,8 @@ use hash32::{Hasher, Murmur3Hasher};
 pub struct Grasshopper<const SIZE: usize> {
     hops: usize,
     hash: u16,
-    token: u16,
+    key_len: u32,
+    token: u32,
 }
 
 impl<const SIZE: usize> Grasshopper<SIZE> {
@@ -19,12 +20,13 @@ impl<const SIZE: usize> Grasshopper<SIZE> {
         }
 
         hasher.write(key);
-        let hash = hasher.finish() as u16;
+        let token = hasher.finish();
 
         Self {
             hops,
-            hash,
-            token: hash,
+            token,
+            hash: token as u16,
+            key_len: key.len() as u32,
         }
     }
 
@@ -42,12 +44,19 @@ impl<const SIZE: usize> Iterator for Grasshopper<SIZE> {
         }
 
         let mut hasher = Murmur3Hasher::default();
-        let mut buf = [0, 0];
-        BigEndian::write_u16(&mut buf, self.token);
+        let mut buf = [0, 0, 0, 0, self.key_len as u8];
+        BigEndian::write_u32(&mut buf, self.token);
         hasher.write(&buf);
-        self.token = hasher.finish() as u16;
 
+        self.token = hasher.finish();
         self.hops -= 1;
+
         Some(self.token as usize % SIZE)
+    }
+}
+
+impl<const SIZE: usize> ExactSizeIterator for Grasshopper<SIZE> {
+    fn len(&self) -> usize {
+        SIZE
     }
 }
