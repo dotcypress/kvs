@@ -1,5 +1,6 @@
 use byteorder::{BigEndian, ByteOrder};
-use hash32::{Hasher, Murmur3Hasher};
+use core::hash::Hasher;
+use hash32::Murmur3Hasher;
 
 #[derive(Default)]
 pub struct Grasshopper<const SIZE: usize> {
@@ -20,7 +21,7 @@ impl<const SIZE: usize> Grasshopper<SIZE> {
         }
 
         hasher.write(key);
-        let token = hasher.finish();
+        let token = hash32::Hasher::finish32(&hasher);
 
         Self {
             hops,
@@ -48,7 +49,7 @@ impl<const SIZE: usize> Iterator for Grasshopper<SIZE> {
         BigEndian::write_u32(&mut buf, self.token);
         hasher.write(&buf);
 
-        self.token = hasher.finish();
+        self.token = hash32::Hasher::finish32(&hasher);
         self.hops -= 1;
 
         Some(self.token as usize % SIZE)

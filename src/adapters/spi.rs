@@ -1,3 +1,4 @@
+use core::convert::Infallible;
 use core::fmt::Debug;
 
 use byteorder::{BigEndian, ByteOrder};
@@ -13,6 +14,20 @@ pub enum Command {
     WriteDisable = 0x04,
     ReadStatusRegister = 0x05,
     WriteEnable = 0x06,
+}
+
+pub struct NoCS;
+
+impl OutputPin for NoCS {
+    type Error = Infallible;
+
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 pub enum Error<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> {
