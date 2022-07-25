@@ -266,38 +266,6 @@ where
         Err(Error::KeyNotFound)
     }
 
-    #[cfg(feature = "serde")]
-    pub fn insert_object<T: Serialize, const N: usize>(
-        &mut self,
-        id: &[u8],
-        val: &T,
-    ) -> Result<Bucket, crate::Error<E>> {
-        let val: Vec<u8, N> = to_vec(val).map_err(Error::SerializationError)?;
-        self.insert(id, &val)
-    }
-
-    #[cfg(feature = "serde")]
-    pub fn load_object<T: DeserializeOwned, const N: usize>(
-        &mut self,
-        id: &[u8],
-    ) -> Result<T, crate::Error<E>> {
-        let mut buf = [0; N];
-        let bucket = self.load(id, &mut buf)?;
-        let res = from_bytes(&buf[0..bucket.val_len()]).map_err(Error::SerializationError)?;
-        Ok(res)
-    }
-
-    #[cfg(feature = "serde")]
-    pub fn patch_object<T: Serialize, const N: usize>(
-        &mut self,
-        id: &[u8],
-        val: &T,
-    ) -> Result<Bucket, crate::Error<E>> {
-        let bucket = self.lookup(id)?;
-        let patch: Vec<u8, N> = to_vec(val).map_err(Error::SerializationError)?;
-        self.patch_value(bucket, 0, &patch)
-    }
-
     pub(crate) fn load_bucket(&mut self, bucket_index: usize) -> Result<RawBucket, Error<E>> {
         let offset = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket_index;
         let mut scratch = [0; size_of::<RawBucket>()];
@@ -483,5 +451,40 @@ where
 
                 Ok(header)
             })
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<E, A, const BUCKETS: usize, const SLOTS: usize> KVStore<A, BUCKETS, SLOTS>
+where
+    A: StoreAdapter<Error = E>,
+{
+    pub fn insert_object<T: Serialize, const N: usize>(
+        &mut self,
+        id: &[u8],
+        val: &T,
+    ) -> Result<Bucket, crate::Error<E>> {
+        let val: Vec<u8, N> = to_vec(val).map_err(Error::SerializationError)?;
+        self.insert(id, &val)
+    }
+
+    pub fn load_object<T: DeserializeOwned, const N: usize>(
+        &mut self,
+        id: &[u8],
+    ) -> Result<T, crate::Error<E>> {
+        let mut buf = [0; N];
+        let bucket = self.load(id, &mut buf)?;
+        let res = from_bytes(&buf[0..bucket.val_len()]).map_err(Error::SerializationError)?;
+        Ok(res)
+    }
+
+    pub fn patch_object<T: Serialize, const N: usize>(
+        &mut self,
+        id: &[u8],
+        val: &T,
+    ) -> Result<Bucket, crate::Error<E>> {
+        let bucket = self.lookup(id)?;
+        let patch: Vec<u8, N> = to_vec(val).map_err(Error::SerializationError)?;
+        self.patch_value(bucket, 0, &patch)
     }
 }
