@@ -58,8 +58,10 @@ pub enum Error<E> {
     StoreNotFound,
     StoreOverflow,
     ValueOverflow,
-    #[cfg(feature = "crud")]
+    #[cfg(feature = "serde")]
     KeyAlreadyExists,
+    #[cfg(feature = "serde")]
+    SerializationError(postcard::Error),
 }
 
 #[bitfield]
