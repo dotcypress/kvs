@@ -8,14 +8,6 @@ struct TraceMemoryAdapter {
     pub memory: Vec<u8>,
 }
 
-impl TraceMemoryAdapter {
-    pub fn new() -> Self {
-        Self {
-            memory: vec![0; 0x1000],
-        }
-    }
-}
-
 impl StoreAdapter for TraceMemoryAdapter {
     type Error = ();
 
@@ -54,15 +46,30 @@ impl StoreAdapter for TraceMemoryAdapter {
     }
 }
 
-fn main() {
-    const BUCKETS: usize = 4;
-    type TraceStore = KVStore<TraceMemoryAdapter, BUCKETS, 4>;
-    let mut store =
-        TraceStore::open(TraceMemoryAdapter::new(), StoreConfig::new(0xf00d, 8), true).unwrap();
+#[cfg(feature = "crud")]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
+struct LogEntry {
+    ts: usize,
+    val: u8,
+}
 
-    store
-        .insert(b"foo", b"consectetur adipiscing elit")
+fn main() {
+    #[cfg(feature = "crud")]
+    {
+        const BUCKETS: usize = 4;
+        type CrudStore = KVStore<TraceMemoryAdapter, BUCKETS, 4>;
+        let mut store = CrudStore::open(
+            TraceMemoryAdapter {
+                memory: vec![0; 0x1000],
+            },
+            StoreConfig::new(0xf00d, 8),
+            true,
+        )
         .unwrap();
-    store.insert(b"bar", b"dolor sit amet").unwrap();
-    store.insert(b"foo", b"lorem ipsum").unwrap();
+        store
+            .create::<LogEntry, 32>(b"100500", &LogEntry { ts: 420, val: 70 })
+            .unwrap();
+        let entry = store.read::<LogEntry, 32>(b"100500").unwrap();
+        println!("entry: {:?}", entry);
+    }
 }

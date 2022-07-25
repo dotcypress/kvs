@@ -58,6 +58,8 @@ pub enum Error<E> {
     StoreNotFound,
     StoreOverflow,
     ValueOverflow,
+    #[cfg(feature = "crud")]
+    KeyAlreadyExists,
 }
 
 #[bitfield]

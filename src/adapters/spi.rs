@@ -169,7 +169,7 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: u
         self.transaction(|spi| {
             let cmd_buf = Self::mem_cmd(Command::Write, addr);
             spi.write(&cmd_buf[..ADDR_BYTES + 1])
-                .and_then(|_| spi.write(&data))
+                .and_then(|_| spi.write(data))
                 .map_err(Error::WriteError)
         })?;
 

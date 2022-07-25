@@ -44,7 +44,12 @@ mod tiny {
     pub type Store = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
     pub fn create_store() -> Store {
-        Store::create(MemoryAdapter::default(), StoreConfig::new(MAGIC, MAX_HOPS)).unwrap()
+        Store::open(
+            MemoryAdapter::default(),
+            StoreConfig::new(MAGIC, MAX_HOPS),
+            true,
+        )
+        .unwrap()
     }
 }
 
@@ -57,9 +62,10 @@ fn test_create_store() {
 fn test_create_invalid_store() {
     type TooSmallStore = KVStore<MemoryAdapter<2>, { tiny::BUCKETS }, { tiny::SLOTS }>;
 
-    let store = TooSmallStore::create(
+    let store = TooSmallStore::open(
         MemoryAdapter::default(),
         StoreConfig::new(tiny::MAGIC, tiny::MAX_HOPS),
+        true,
     );
     assert!(store.is_err());
     if let Err(err) = store {

@@ -2,6 +2,13 @@ use crate::adapters::*;
 use crate::*;
 use core::mem::size_of;
 
+#[cfg(feature = "crud")]
+use heapless::Vec;
+#[cfg(feature = "crud")]
+use postcard::{from_bytes, to_vec};
+#[cfg(feature = "crud")]
+use serde::{de::DeserializeOwned, Serialize};
+
 pub struct StoreConfig {
     magic: u32,
     nonce: u16,
@@ -42,17 +49,6 @@ where
 {
     const DATA_START: Address = size_of::<StoreHeader>() + size_of::<RawBucket>() * BUCKETS;
 
-    pub fn create(adapter: A, cfg: StoreConfig) -> Result<Self, Error<E>> {
-        let mut res = Self {
-            alloc: None,
-            scratch: [0; MAX_KEY_LEN],
-            adapter,
-            cfg,
-        };
-        res.reset()?;
-        Ok(res)
-    }
-
     pub fn open(adapter: A, cfg: StoreConfig, create_new: bool) -> Result<Self, Error<E>> {
         let mut adapter = adapter;
         match Self::load_header(&mut adapter, cfg.magic, cfg.nonce) {
@@ -62,9 +58,20 @@ where
                 adapter,
                 cfg,
             }),
-            Err(Error::StoreNotFound) if create_new => Self::create(adapter, cfg),
+            Err(Error::StoreNotFound) if create_new => Self::bootstrap(adapter, cfg),
             Err(err) => Err(err),
         }
+    }
+
+    pub fn bootstrap(adapter: A, cfg: StoreConfig) -> Result<Self, Error<E>> {
+        let mut res = Self {
+            alloc: None,
+            scratch: [0; MAX_KEY_LEN],
+            adapter,
+            cfg,
+        };
+        res.reset()?;
+        Ok(res)
     }
 
     pub fn adapter(&mut self) -> &mut A {
@@ -181,7 +188,7 @@ where
 
         let bucket = self.lookup(key)?;
         let addr = bucket.address() + bucket.key_len() + offset;
-        let size = usize::min(buf.len(), self.adapter.max_address() - addr);
+        let size = usize::min(buf.len(), bucket.val_len());
         self.adapter
             .read(addr, &mut buf[..size])
             .map_err(Error::AdapterError)?;
@@ -236,7 +243,7 @@ where
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
         assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
 
-        let hopper = Grasshopper::<BUCKETS>::new(self.cfg.max_hops, self.cfg.nonce, &key);
+        let hopper = Grasshopper::<BUCKETS>::new(self.cfg.max_hops, self.cfg.nonce, key);
         let hash = hopper.hash();
 
         for index in hopper {
@@ -259,6 +266,44 @@ where
         Err(Error::KeyNotFound)
     }
 
+    #[cfg(feature = "crud")]
+    pub fn create<T: Serialize, const N: usize>(
+        &mut self,
+        id: &[u8],
+        val: &T,
+    ) -> Result<Bucket, crate::Error<E>> {
+        match self.lookup(id) {
+            Err(Error::KeyNotFound) => {
+                let val: Vec<u8, N> = to_vec(val).unwrap();
+                self.insert(id, &val)
+            }
+            Err(err) => Err(err),
+            Ok(_) => Err(Error::KeyAlreadyExists),
+        }
+    }
+
+    #[cfg(feature = "crud")]
+    pub fn read<T: DeserializeOwned, const N: usize>(
+        &mut self,
+        id: &[u8],
+    ) -> Result<T, crate::Error<E>> {
+        let mut buf = [0; N];
+        let bucket = self.load(id, &mut buf)?;
+        let res = from_bytes(&buf[0..bucket.val_len()]).unwrap();
+        Ok(res)
+    }
+
+    #[cfg(feature = "crud")]
+    pub fn update<T: Serialize, const N: usize>(
+        &mut self,
+        id: &[u8],
+        val: &T,
+    ) -> Result<Bucket, crate::Error<E>> {
+        let bucket = self.lookup(id)?;
+        let patch: Vec<u8, N> = to_vec(val).unwrap();
+        self.patch_value(bucket, 0, &patch)
+    }
+
     pub(crate) fn load_bucket(&mut self, bucket_index: usize) -> Result<RawBucket, Error<E>> {
         let offset = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket_index;
         let mut scratch = [0; size_of::<RawBucket>()];
@@ -277,7 +322,7 @@ where
             key_len <= MAX_KEY_LEN && !key.is_empty() && val_len <= MAX_VALUE_LEN && val_len > 0
         );
 
-        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, self.cfg.nonce, &key);
+        let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, self.cfg.nonce, key);
         let hash = hopper.hash();
         let mut free_bucket: Option<Bucket> = None;
 

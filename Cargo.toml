@@ -16,3 +16,10 @@ byteorder = { version = "1.4.3", default-features = false }
 embedded-hal = { version = "^0.2.4", features = ["unproven"] }
 hash32 = "0.3.0"
 modular-bitfield = "0.11.2"
+postcard = {version = "1.0.1", optional = true }
+heapless = {version = "0.7.15", optional = true }
+serde = { version = "1.0.140", default-features = false, optional = true }
+
+[features]
+default = ["crud"]
+crud = ["dep:serde", "dep:postcard", "dep:heapless"]

@@ -31,7 +31,7 @@ type MemoryStore = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
 fn main() {
     let cfg = StoreConfig::new(0x796e6974, 32).nonce(34);
-    let mut store = MemoryStore::create(MemoryAdapter::default(), cfg).unwrap();
+    let mut store = MemoryStore::open(MemoryAdapter::default(), cfg, true).unwrap();
     for key in KEYS.iter() {
         store.insert(key.as_bytes(), key.as_bytes()).unwrap();
     }
