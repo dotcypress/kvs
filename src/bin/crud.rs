@@ -1,75 +1,65 @@
 extern crate kvs;
 
-use kvs::adapters::StoreAdapter;
+use kvs::adapters::ram::MemoryAdapter;
 use kvs::*;
+use std::io::*;
 
-#[derive(Debug)]
-struct TraceMemoryAdapter {
-    pub memory: Vec<u8>,
-}
+const STORE_SIZE: usize = 128;
+const BUCKETS: usize = 8;
+const SLOTS: usize = 1;
 
-impl StoreAdapter for TraceMemoryAdapter {
-    type Error = ();
+type CrudStore = KVStore<MemoryAdapter<STORE_SIZE>, BUCKETS, SLOTS>;
 
-    fn read(&mut self, addr: Address, buf: &mut [u8]) -> Result<(), Self::Error> {
-        if buf.len() + addr > self.memory.len() {
-            return Err(());
-        }
-        buf.copy_from_slice(&self.memory[addr..(addr + buf.len())]);
-        println!(
-            "R: {:3} [0x{:03x}..0x{:03x}] {:02x?}",
-            buf.len(),
-            addr,
-            addr + buf.len(),
-            if buf.len() > 16 { &buf[..16] } else { buf }
-        );
-        Ok(())
-    }
-
-    fn write(&mut self, addr: Address, data: &[u8]) -> Result<(), Self::Error> {
-        if addr + data.len() > self.memory.len() {
-            return Err(());
-        }
-        println!(
-            "W: {:3} [0x{:03x}..0x{:03x}] {:02x?}",
-            data.len(),
-            addr,
-            addr + data.len(),
-            if data.len() > 16 { &data[..16] } else { data }
-        );
-        self.memory[addr..(addr + data.len())].copy_from_slice(data);
-        Ok(())
-    }
-
-    fn max_address(&self) -> Address {
-        self.memory.len()
-    }
+#[cfg(feature = "crud")]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
+enum SensorMode {
+    LowPower,
+    Normal,
 }
 
 #[cfg(feature = "crud")]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Eq, PartialEq)]
-struct LogEntry {
-    ts: usize,
-    val: u8,
+struct SensorCalibration {
+    offset: usize,
+    prescaler: u8,
+    mode: SensorMode,
 }
 
 fn main() {
     #[cfg(feature = "crud")]
     {
-        const BUCKETS: usize = 4;
-        type CrudStore = KVStore<TraceMemoryAdapter, BUCKETS, 4>;
-        let mut store = CrudStore::open(
-            TraceMemoryAdapter {
-                memory: vec![0; 0x1000],
-            },
-            StoreConfig::new(0xf00d, 8),
-            true,
-        )
-        .unwrap();
+        let mut store =
+            CrudStore::open(MemoryAdapter::default(), StoreConfig::new(0xf00d, 8), true).unwrap();
         store
-            .create::<LogEntry, 32>(b"100500", &LogEntry { ts: 420, val: 70 })
+            .create::<SensorCalibration, 32>(
+                b"sensor/1",
+                &SensorCalibration {
+                    offset: 100500,
+                    prescaler: 255,
+                    mode: SensorMode::LowPower,
+                },
+            )
             .unwrap();
-        let entry = store.read::<LogEntry, 32>(b"100500").unwrap();
-        println!("entry: {:?}", entry);
+        store
+            .create::<SensorCalibration, 32>(
+                b"sensor/2",
+                &SensorCalibration {
+                    offset: 100,
+                    prescaler: 128,
+                    mode: SensorMode::Normal,
+                },
+            )
+            .unwrap();
+        store
+            .create::<SensorCalibration, 32>(
+                b"sensor/3",
+                &SensorCalibration {
+                    offset: 500,
+                    prescaler: 1,
+                    mode: SensorMode::LowPower,
+                },
+            )
+            .unwrap();
+        stdout().write_all(&store.close().memory).ok();
     }
 }
