@@ -1,5 +1,7 @@
 #![no_std]
 
+use core::str::Utf8Error;
+
 use adapters::StoreAdapter;
 use modular_bitfield::prelude::*;
 
@@ -58,6 +60,7 @@ pub enum Error<E> {
     StoreNotFound,
     StoreOverflow,
     ValueOverflow,
+    Utf8Error(Utf8Error),
     #[cfg(feature = "serde")]
     KeyAlreadyExists,
     #[cfg(feature = "serde")]

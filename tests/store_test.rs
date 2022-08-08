@@ -179,6 +179,34 @@ fn test_load() {
 }
 
 #[test]
+fn test_load_slice() {
+    let mut store = tiny::create_store();
+    store.insert(b"foo", b"bar").unwrap();
+
+    let mut scratch = [0; 16];
+    let val = store.load_slice(b"foo", &mut scratch).unwrap();
+    assert_eq!(val, b"bar");
+
+    let mut scratch = [0; 2];
+    let val = store.load_slice(b"foo", &mut scratch).unwrap();
+    assert_eq!(val, b"ba");
+}
+
+#[test]
+fn test_load_str() {
+    let mut store = tiny::create_store();
+    store.insert(b"foo", b"bar").unwrap();
+
+    let mut scratch = [0; 16];
+    let val = store.load_str(b"foo", &mut scratch).unwrap();
+    assert_eq!(val, "bar");
+
+    let mut scratch = [0; 2];
+    let val = store.load_str(b"foo", &mut scratch).unwrap();
+    assert_eq!(val, "ba");
+}
+
+#[test]
 fn test_load_rewrited() {
     let mut store = tiny::create_store();
     store.insert(b"foo", b"Ba").unwrap();

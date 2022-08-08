@@ -1,7 +1,5 @@
 # kvs
 
-🚧 Work in progress.
-
 `[no_std]` Key-Value Store backed by RAM/SRAM/FRAM/MRAM/EEPROM, intended to use in resource-constrained environments.
 
 ## Features/Limitations

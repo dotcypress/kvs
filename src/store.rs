@@ -173,6 +173,17 @@ where
         self.load_at(key, buf, 0)
     }
 
+    pub fn load_slice<'a>(&mut self, key: &[u8], buf: &'a mut [u8]) -> Result<&'a [u8], Error<E>> {
+        let bucket = self.load_at(key, buf, 0)?;
+        let len = usize::min(bucket.val_len(), buf.len());
+        Ok(&buf[0..len])
+    }
+
+    pub fn load_str<'a>(&mut self, key: &[u8], buf: &'a mut [u8]) -> Result<&'a str, Error<E>> {
+        let slice = self.load_slice(key, buf)?;
+        core::str::from_utf8(slice).map_err(Error::Utf8Error)
+    }
+
     pub fn load_at(
         &mut self,
         key: &[u8],
