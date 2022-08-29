@@ -179,6 +179,15 @@ fn test_load() {
 }
 
 #[test]
+fn test_exists() {
+    let mut store = tiny::create_store();
+    store.insert(b"foo", b"bar").unwrap();
+
+    assert_eq!(store.exists(b"foo").unwrap(), true);
+    assert_eq!(store.exists(b"bar").unwrap(), false);
+}
+
+#[test]
 fn test_load_slice() {
     let mut store = tiny::create_store();
     store.insert(b"foo", b"bar").unwrap();

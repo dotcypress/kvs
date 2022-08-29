@@ -141,28 +141,17 @@ where
     }
 
     pub fn append(&mut self, key: &[u8], val: &[u8]) -> Result<Bucket, Error<E>> {
-        assert!(
-            !key.is_empty()
-                && key.len() <= MAX_KEY_LEN
-                && !val.is_empty()
-                && val.len() <= MAX_VALUE_LEN
-        );
         if SLOTS == 0 {
             return Err(Error::ReadOnlyStore);
         }
 
         let bucket = self.lookup(key)?;
-        assert!(bucket.val_len() + val.len() <= MAX_VALUE_LEN);
         let offset = bucket.val_len();
         self.patch_value(bucket, offset, val)
     }
 
     pub fn patch(&mut self, key: &[u8], offset: usize, patch: &[u8]) -> Result<Bucket, Error<E>> {
-        assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN && !patch.is_empty());
-
         let bucket = self.lookup(key)?;
-        assert!(bucket.val_len() + patch.len() <= MAX_VALUE_LEN);
-
         if offset > bucket.val_len() {
             return Err(Error::InvalidPatchOffset);
         }
@@ -190,13 +179,9 @@ where
         buf: &mut [u8],
         offset: usize,
     ) -> Result<Bucket, Error<E>> {
-        assert!(
-            !key.is_empty()
-                && key.len() <= MAX_KEY_LEN
-                && !buf.is_empty()
-                && (offset + buf.len()) <= MAX_VALUE_LEN
-        );
-
+        if offset + buf.len() > MAX_VALUE_LEN {
+            return Err(Error::ValueOverflow);
+        }
         let bucket = self.lookup(key)?;
         let addr = bucket.address() + bucket.key_len() + offset;
         let size = usize::min(buf.len(), bucket.val_len());
@@ -207,8 +192,6 @@ where
     }
 
     pub fn erase(&mut self, key: &[u8], fill_with: u8) -> Result<(), Error<E>> {
-        assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
-
         match self.lookup(key) {
             Ok(bucket) => {
                 self.erase_bucket_content(&bucket, fill_with)?;
@@ -228,8 +211,6 @@ where
     }
 
     pub fn remove(&mut self, key: &[u8]) -> Result<(), Error<E>> {
-        assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
-
         match self.lookup(key) {
             Ok(bucket) => {
                 let addr = size_of::<StoreHeader>() + size_of::<RawBucket>() * bucket.index();
@@ -251,8 +232,18 @@ where
         KeysIterator::new(self)
     }
 
+    pub fn exists(&mut self, key: &[u8]) -> Result<bool, Error<E>> {
+        match self.lookup(key) {
+            Ok(_) => Ok(true),
+            Err(Error::KeyNotFound) => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
+
     pub fn lookup(&mut self, key: &[u8]) -> Result<Bucket, Error<E>> {
-        assert!(!key.is_empty() && key.len() <= MAX_KEY_LEN);
+        if key.len() > MAX_KEY_LEN {
+            return Err(Error::KeyOverflow);
+        }
 
         let hopper = Grasshopper::<BUCKETS>::new(self.cfg.max_hops, self.cfg.nonce, key);
         let hash = hopper.hash();
@@ -290,10 +281,13 @@ where
         if SLOTS == 0 {
             return Err(Error::ReadOnlyStore);
         }
+        if val_len > MAX_VALUE_LEN {
+            return Err(Error::ValueOverflow);
+        }
         let key_len = key.len();
-        assert!(
-            key_len <= MAX_KEY_LEN && !key.is_empty() && val_len <= MAX_VALUE_LEN && val_len > 0
-        );
+        if key.len() > MAX_KEY_LEN {
+            return Err(Error::KeyOverflow);
+        }
 
         let hopper: Grasshopper<BUCKETS> = Grasshopper::new(BUCKETS, self.cfg.nonce, key);
         let hash = hopper.hash();
@@ -371,8 +365,11 @@ where
         patch: &[u8],
     ) -> Result<Bucket, Error<E>> {
         let new_val_len = usize::max(offset + patch.len(), bucket.val_len());
-        let mut bucket = bucket;
+        if new_val_len > MAX_VALUE_LEN {
+            return Err(Error::ValueOverflow);
+        }
 
+        let mut bucket = bucket;
         if new_val_len > bucket.val_len() {
             self.get_alloc()?
                 .alloc(

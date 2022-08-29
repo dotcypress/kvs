@@ -60,6 +60,7 @@ pub enum Error<E> {
     StoreNotFound,
     StoreOverflow,
     ValueOverflow,
+    KeyOverflow,
     Utf8Error(Utf8Error),
     #[cfg(feature = "serde")]
     KeyAlreadyExists,
