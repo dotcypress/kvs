@@ -84,25 +84,38 @@ pub(crate) struct RawBucket {
     hash: B16,
 }
 
-pub struct KeysIterator<'a, A, const BUCKETS: usize, const SLOTS: usize>
+pub struct KeysIterator<'a, 'b, A, const BUCKETS: usize, const SLOTS: usize>
 where
     A: StoreAdapter,
 {
     store: &'a mut KVStore<A, BUCKETS, SLOTS>,
+    prefix: Option<&'b [u8]>,
     cursor: usize,
 }
 
-impl<'a, A, const BUCKETS: usize, const SLOTS: usize> KeysIterator<'a, A, BUCKETS, SLOTS>
+impl<'a, 'b, A, const BUCKETS: usize, const SLOTS: usize> KeysIterator<'a, 'b, A, BUCKETS, SLOTS>
 where
     A: StoreAdapter,
 {
     pub fn new(store: &'a mut KVStore<A, BUCKETS, SLOTS>) -> Self {
-        Self { store, cursor: 0 }
+        Self {
+            store,
+            cursor: 0,
+            prefix: None,
+        }
+    }
+
+    pub fn with_prefix(store: &'a mut KVStore<A, BUCKETS, SLOTS>, prefix: &'b [u8]) -> Self {
+        Self {
+            store,
+            cursor: 0,
+            prefix: Some(prefix),
+        }
     }
 }
 
-impl<'a, A, const BUCKETS: usize, const SLOTS: usize> Iterator
-    for KeysIterator<'a, A, BUCKETS, SLOTS>
+impl<'a, 'b, A, const BUCKETS: usize, const SLOTS: usize> Iterator
+    for KeysIterator<'a, 'b, A, BUCKETS, SLOTS>
 where
     A: StoreAdapter,
 {
@@ -119,7 +132,9 @@ where
             self.cursor += 1;
 
             let key_len = raw.key_len() as usize;
-            if key_len > 0 {
+            let prefix_len = self.prefix.map_or(0, |prefix| prefix.len());
+
+            if key_len > prefix_len {
                 let val_len = raw.val_len() as usize;
                 let bucket = Bucket { index, raw };
                 let address = bucket.raw.address() as Address;
@@ -129,6 +144,10 @@ where
                     .adapter()
                     .read(address, &mut scratch[..key_len])
                     .ok();
+
+                if matches!(self.prefix, Some(prefix) if &scratch[..prefix_len] != prefix) {
+                    continue;
+                }
 
                 return Some(KeyReference {
                     key_len,

@@ -166,6 +166,30 @@ fn test_list_keys() {
 }
 
 #[test]
+fn test_list_keys_with_prefix() {
+    let mut check = HashSet::new();
+    check.insert("/root/foo");
+    check.insert("/root/bar");
+    check.insert("/root/baz");
+    check.insert("/etc/foo");
+    assert_eq!(check.len(), 4);
+
+    let mut store = tiny::create_store();
+
+    store.insert(b"/root/foo", b"bar").unwrap();
+    store.insert(b"/root/bar", b"barbaz").unwrap();
+    store.insert(b"/root/baz", b"foobarbaz").unwrap();
+    store.insert(b"/etc/foo", b"baz").unwrap();
+
+    for key_ref in store.keys_with_prefix(b"/root") {
+        let key = core::str::from_utf8(key_ref.key()).unwrap();
+        check.remove(key);
+    }
+
+    assert_eq!(check.len(), 1);
+}
+
+#[test]
 fn test_load() {
     let mut store = tiny::create_store();
     store.insert(b"foo", b"bar").unwrap();

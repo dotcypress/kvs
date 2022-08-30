@@ -236,8 +236,15 @@ where
         }
     }
 
-    pub fn keys(&mut self) -> KeysIterator<'_, A, BUCKETS, SLOTS> {
+    pub fn keys(&mut self) -> KeysIterator<'_, '_, A, BUCKETS, SLOTS> {
         KeysIterator::new(self)
+    }
+
+    pub fn keys_with_prefix<'a>(
+        &mut self,
+        pat: &'a [u8],
+    ) -> KeysIterator<'_, 'a, A, BUCKETS, SLOTS> {
+        KeysIterator::with_prefix(self, pat)
     }
 
     pub fn exists(&mut self, key: &[u8]) -> Result<bool, Error<E>> {
@@ -495,5 +502,5 @@ where
         let bucket = self.load(id, &mut buf)?;
         let res = from_bytes(&buf[0..bucket.val_len()]).map_err(Error::SerializationError)?;
         Ok(res)
-    }    
+    }
 }
