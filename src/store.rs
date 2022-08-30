@@ -393,6 +393,8 @@ where
                 .map_err(Error::AdapterError)?;
         }
 
+        //TODO: fix leak
+
         let addr = bucket.address() + bucket.key_len() + offset;
         self.adapter
             .write(addr, patch)
@@ -476,7 +478,7 @@ impl<E, A, const BUCKETS: usize, const SLOTS: usize> KVStore<A, BUCKETS, SLOTS>
 where
     A: StoreAdapter<Error = E>,
 {
-    pub fn insert_object<T: Serialize, const N: usize>(
+    pub fn insert_val<T: Serialize, const N: usize>(
         &mut self,
         id: &[u8],
         val: &T,
@@ -485,7 +487,7 @@ where
         self.insert(id, &val)
     }
 
-    pub fn load_object<T: DeserializeOwned, const N: usize>(
+    pub fn load_val<T: DeserializeOwned, const N: usize>(
         &mut self,
         id: &[u8],
     ) -> Result<T, crate::Error<E>> {
@@ -493,15 +495,5 @@ where
         let bucket = self.load(id, &mut buf)?;
         let res = from_bytes(&buf[0..bucket.val_len()]).map_err(Error::SerializationError)?;
         Ok(res)
-    }
-
-    pub fn patch_object<T: Serialize, const N: usize>(
-        &mut self,
-        id: &[u8],
-        val: &T,
-    ) -> Result<Bucket, crate::Error<E>> {
-        let bucket = self.lookup(id)?;
-        let patch: Vec<u8, N> = to_vec(val).map_err(Error::SerializationError)?;
-        self.patch_value(bucket, 0, &patch)
-    }
+    }    
 }

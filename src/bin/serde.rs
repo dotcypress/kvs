@@ -26,7 +26,7 @@ mod serde {
         let mut store =
             CrudStore::open(MemoryAdapter::default(), StoreConfig::new(0xf00d, 8), true).unwrap();
         store
-            .insert_object::<SensorConfig, 32>(
+            .insert_val::<SensorConfig, 32>(
                 b"sensor/1",
                 &SensorConfig {
                     offset: 100500,
@@ -36,7 +36,7 @@ mod serde {
             )
             .unwrap();
         store
-            .insert_object::<SensorConfig, 32>(
+            .insert_val::<SensorConfig, 32>(
                 b"sensor/2",
                 &SensorConfig {
                     offset: 100,
@@ -46,7 +46,7 @@ mod serde {
             )
             .unwrap();
         store
-            .insert_object::<SensorConfig, 32>(
+            .insert_val::<SensorConfig, 32>(
                 b"sensor/3",
                 &SensorConfig {
                     offset: 500,

@@ -53,7 +53,7 @@ fn test_create() {
     let mut store = tiny::create_store();
 
     let bucket = store
-        .insert_object::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
+        .insert_val::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
         .unwrap();
     assert_eq!(bucket.key_len(), 8);
     assert_eq!(bucket.val_len(), 5);
@@ -64,36 +64,20 @@ fn test_create() {
 fn test_read() {
     let mut store = tiny::create_store();
     store
-        .insert_object::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
+        .insert_val::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
         .unwrap();
-    let entry = store.load_object::<SensorConfig, 16>(b"sensor/1").unwrap();
+    let entry = store.load_val::<SensorConfig, 16>(b"sensor/1").unwrap();
     assert_eq!(entry, TEST_ENTRY);
-}
-
-#[test]
-fn test_update() {
-    let mut store = tiny::create_store();
-    store
-        .insert_object::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
-        .unwrap();
-    let mut entry = store.load_object::<SensorConfig, 16>(b"sensor/1").unwrap();
-    entry.mode = SensorMode::Normal;
-    store
-        .patch_object::<SensorConfig, 16>(b"sensor/1", &entry)
-        .unwrap();
-
-    let entry = store.load_object::<SensorConfig, 16>(b"sensor/1").unwrap();
-    assert_eq!(entry.mode, SensorMode::Normal);
 }
 
 #[test]
 fn test_delete() {
     let mut store = tiny::create_store();
     store
-        .insert_object::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
+        .insert_val::<SensorConfig, 16>(b"sensor/1", &TEST_ENTRY)
         .unwrap();
 
     store.remove(b"sensor/1").unwrap();
-    let res = store.load_object::<SensorConfig, 16>(b"sensor/1");
+    let res = store.load_val::<SensorConfig, 16>(b"sensor/1");
     assert_eq!(res, Err(kvs::Error::KeyNotFound));
 }
