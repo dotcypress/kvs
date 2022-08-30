@@ -37,17 +37,29 @@ impl PartialEq for Slot {
 
 impl Eq for Slot {}
 
+#[derive(Debug, Default, Copy, Clone)]
+pub enum AllocStrategy {
+    #[default]
+    MaxFit,
+    MinFit,
+    FirstFit,
+}
+
 pub struct Alloc<const SLOTS: usize> {
     pub(crate) slots: [Slot; SLOTS],
+    alloc_strategy: AllocStrategy,
 }
 
 impl<const SLOTS: usize> Alloc<SLOTS> {
-    pub fn new(start: Address, space: usize) -> Self {
+    pub fn new(alloc_strategy: AllocStrategy, start: Address, space: usize) -> Self {
         let mut slots = [Slot::default(); SLOTS];
         if SLOTS > 0 {
             slots[0] = Slot::new(start, space + start);
         }
-        Self { slots }
+        Self {
+            alloc_strategy,
+            slots,
+        }
     }
 
     pub fn alloc(&mut self, size: usize, addr: Option<Address>) -> Option<Address> {
@@ -75,7 +87,11 @@ impl<const SLOTS: usize> Alloc<SLOTS> {
                 _ => None,
             }
         } else {
-            let slot = self.slots.iter_mut().filter(|s| s.size() >= size).max()?;
+            let slot = match self.alloc_strategy {
+                AllocStrategy::MaxFit => self.slots.iter_mut().filter(|s| s.size() >= size).max(),
+                AllocStrategy::MinFit => self.slots.iter_mut().filter(|s| s.size() >= size).min(),
+                AllocStrategy::FirstFit => self.slots.iter_mut().find(|s| s.size() >= size),
+            }?;
             let start = slot.start;
             slot.start += size;
             Some(start)

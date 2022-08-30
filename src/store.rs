@@ -13,6 +13,7 @@ pub struct StoreConfig {
     magic: u32,
     nonce: u16,
     max_hops: usize,
+    alloc_strategy: AllocStrategy,
 }
 
 impl StoreConfig {
@@ -21,12 +22,19 @@ impl StoreConfig {
             magic,
             max_hops,
             nonce: 0,
+            alloc_strategy: AllocStrategy::default(),
         }
     }
 
     pub fn nonce(self, nonce: u16) -> Self {
         let mut res = self;
         res.nonce = nonce;
+        res
+    }
+
+    pub fn alloc_strategy(self, alloc_strategy: AllocStrategy) -> Self {
+        let mut res = self;
+        res.alloc_strategy = alloc_strategy;
         res
     }
 }
@@ -408,6 +416,7 @@ where
         let mut offset = size_of::<StoreHeader>();
         let mut buckets = BUCKETS;
         let mut alloc = Alloc::<SLOTS>::new(
+            self.cfg.alloc_strategy,
             Self::DATA_START,
             self.adapter.max_address() - Self::DATA_START,
         );

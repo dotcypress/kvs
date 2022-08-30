@@ -1,4 +1,5 @@
 use crate::adapters::*;
+use core::ops::{Deref, DerefMut};
 
 pub struct PagedAdapter<A, const PAGE_SIZE: usize>
 where
@@ -13,6 +14,26 @@ where
 {
     pub fn new(inner: A) -> Self {
         Self { inner }
+    }
+}
+
+impl<A, const PAGE_SIZE: usize> Deref for PagedAdapter<A, PAGE_SIZE>
+where
+    A: StoreAdapter,
+{
+    type Target = A;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<A, const PAGE_SIZE: usize> DerefMut for PagedAdapter<A, PAGE_SIZE>
+where
+    A: StoreAdapter,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 

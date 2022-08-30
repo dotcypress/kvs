@@ -173,11 +173,10 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin, const ADDR_BYTES: u
                 .map_err(Error::WriteError)
         })?;
 
-        if self.cfg.async_write {
-            return Ok(());
+        if !self.cfg.async_write {
+            while self.read_status_register()? & 0x1 == 0x1 {}
         }
 
-        while self.read_status_register()? & 0x1 == 0x1 {}
         Ok(())
     }
 
