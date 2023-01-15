@@ -27,6 +27,11 @@ pub struct Bucket {
 }
 
 impl Bucket {
+    pub fn val_address(&self) -> Address {
+        let addr = self.raw.address() + self.raw.key_len() as u32;
+        addr as Address
+    }
+
     pub(crate) fn index(&self) -> usize {
         self.index
     }

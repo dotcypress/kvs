@@ -400,9 +400,10 @@ where
                 .map_err(Error::AdapterError)?;
         }
 
-        //TODO: fix leak
-
         let addr = bucket.address() + bucket.key_len() + offset;
+        if addr + patch.len() > self.adapter.max_address() {
+            return Err(Error::StoreOverflow);
+        }
         self.adapter
             .write(addr, patch)
             .map_err(Error::AdapterError)?;

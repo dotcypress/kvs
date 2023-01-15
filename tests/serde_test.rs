@@ -81,3 +81,20 @@ fn test_delete() {
     let res = store.load_val::<SensorConfig, 16>(b"sensor/1");
     assert_eq!(res, Err(kvs::Error::KeyNotFound));
 }
+
+#[test]
+fn test_primitive_types() {
+    let temp = 31;
+    let humidity = 42;
+    let charge = -7;
+
+    let mut store = tiny::create_store();
+
+    store.insert_val::<u16, 2>(b"temp", &temp).unwrap();
+    store.insert_val::<u8, 2>(b"humidity", &humidity).unwrap();
+    store.insert_val::<i32, 4>(b"charge", &charge).unwrap();
+
+    assert_eq!(store.load_val::<u16, 2>(b"temp").unwrap(), temp);
+    assert_eq!(store.load_val::<u8, 2>(b"humidity").unwrap(), humidity);
+    assert_eq!(store.load_val::<i32, 4>(b"charge").unwrap(), charge);
+}

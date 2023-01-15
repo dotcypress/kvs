@@ -1,7 +1,7 @@
 [package]
 name = "kvs"
-version = "0.0.4"
-edition = "2018"
+version = "0.0.5"
+edition = "2021"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 description = "Embedded Key-Value Store"
