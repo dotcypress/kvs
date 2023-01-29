@@ -7,7 +7,6 @@
 * Max key size: 256B
 * Max value size: 64KB
 * Max store size: 16MB
-* Max capacity: 65400 buckets
 * Storage overhead: 8B per bucket
 * RAM overhead: 16B per allocation slot, 0B for read-only store
 

@@ -68,8 +68,6 @@ pub enum Error<E> {
     KeyOverflow,
     Utf8Error(Utf8Error),
     #[cfg(feature = "serde")]
-    KeyAlreadyExists,
-    #[cfg(feature = "serde")]
     SerializationError(postcard::Error),
 }
 
